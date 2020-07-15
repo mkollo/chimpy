@@ -1,3 +1,13 @@
+#    ___ _  _ ___ __  __ _____   __
+#   / __| || |_ _|  \/  | _ \ \ / /
+#  | (__| __ || || |\/| |  _/\ V / 
+#   \___|_||_|___|_|  |_|_|   |_| 
+# 
+# Copyright (c) 2020 Mihaly Kollo. All rights reserved.
+# 
+# This work is licensed under the terms of the MIT license.  
+# For a copy, see <https://opensource.org/licenses/MIT>.
+                                 
 import glob
 import os
 from chimpy import *
@@ -12,13 +22,18 @@ class Experiment:
         self.explore_paths(experiment_folder)
         self.select_rec(stim_selection,'stim')
         self.select_rec(noise_selection,'noise')
-#         self.select_rec(brain_selection,'brain')
+        self.unselect_rec('brain')
         self.print_all_rec_lists()
-        print(self.paths)
+        print("Loading stim recording...")
         self.recordings['stim']=Stim(self.paths['stim'][self.selections['stim']])
-        self.recordings['noise']=Noise(self.paths['stim'][self.selections['stim']], self.recordings['stim'])
+        print("Loading noise recording...")
+        self.recordings['noise']=Raw(self.paths['noise'][self.selections['noise']])
+        print("Calculating pixel amps...")
         plot_chip_surface_amps(self.recordings['stim'])
         plot_chip_surface_clusters(self.recordings['stim'])
+        
+    def unselect_rec(self, rec_type):
+        self.selections[rec_type]=-1
         
     def select_rec(self, selection, rec_type):
         if selection<0:
@@ -49,4 +64,4 @@ class Experiment:
 
         
     def print_file_item(self, selected, n, file_path):
-        print('[{0}] {1:3}: {2}'.format(' ' if selected==False else 'x', str(n), os.path.basename(file_path)))
+        print('[{0}] {1:3} – {2}'.format(' ' if selected==False else 'x', str(n), os.path.basename(file_path)))

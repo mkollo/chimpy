@@ -1,6 +1,18 @@
+#    ___ _  _ ___ __  __ _____   __
+#   / __| || |_ _|  \/  | _ \ \ / /
+#  | (__| __ || || |\/| |  _/\ V / 
+#   \___|_||_|___|_|  |_|_|   |_| 
+# 
+# Copyright (c) 2020 Mihaly Kollo. All rights reserved.
+# 
+# This work is licensed under the terms of the MIT license.  
+# For a copy, see <https://opensource.org/licenses/MIT>.
+                                 
+
 import importlib
 import h5py
 import re
+import os
 
 from . import preprocess
 importlib.reload(preprocess)
@@ -20,17 +32,19 @@ class Raw:
         else:
             self.file_path=file_path
         self.fid=h5py.File(file_path, "r")
-        self.traces=self.fid["sig"][:1024,:] 
         self.map=self.fid["mapping"]
         self.ids=[c[0] for c in self.map]
         self.electrodes=[c[1] for c in self.map]
         self.xs=[c[2] for c in self.map]
         self.ys=[c[3] for c in self.map]
-        preprocess.filter_hdf_traces(self, 100, 9000, cmr=False)
-
-    def filtered_filename(self):
-        return re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.original_file_path)
+        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.original_file_path)
     
+    def filter(self, stim_recording):
+        if not(os.path.isfile()):
+            preprocess.filter_hdf_traces(self, stim_recording, 100, 9000, cmr=False)
+        else:
+            print("A filtered version of the recording already exists")
+            
     def __del__(self): 
         self.fid.close()
         ramdisk.wipe()
@@ -39,7 +53,7 @@ class Stim(Raw):
     
     def __init__(self, file_path):
         Raw.__init__(self,file_path)
-        self.filt_traces = preprocess.filter_traces(self.traces, 100, 9000, cmr=False)
+        self.filt_traces = preprocess.filter_traces(self.fid["sig"][:1024,:], 100, 9000, cmr=False)
         self.amps = preprocess.get_spike_amps(self.filt_traces)
         self.collect_data()
         
@@ -59,23 +73,3 @@ class Stim(Raw):
         return clustering.labels_
     
 
-            
-class Noise(Raw):
-    
-    def __init__(self, file_path, stim_recording):
-        Raw.__init__(self,file_path)
-        self.data=stim_recording.data
-        
-    def filt_traces(self):
-        self.filt_traces_batched = preprocess.filter_traces_batched(self.traces, 100, 7000, cmr=False)
-        plt.plot(np.asarray(self.traces[4,800:1000],dtype=np.float32)-500)
-        plt.plot(self.filt_traces_batched[4,800:1000])
-        plt.show()
-#         plt.magnitude_spectrum(self.traces[0,:], 20000)
-#         plt.xlim([1,20000])
-#         plt.ylim([0,0.25])
-# #         print(self.traces[0,:])
-#         plt.magnitude_spectrum(self.filt_traces[0,:],20000)
-#         plt.show()
-
-        
