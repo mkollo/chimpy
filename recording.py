@@ -1,8 +1,11 @@
 import importlib
 import h5py
+import re
+
 from . import preprocess
 importlib.reload(preprocess)
-
+from . import ramdisk
+importlib.reload(ramdisk)
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
@@ -10,7 +13,12 @@ import matplotlib.pyplot as plt
 
 class Raw:
     
-    def __init__(self, file_path):
+    def __init__(self, file_path, ram_copy=True):
+        self.original_file_path=file_path
+        if ram_copy:
+            self.file_path=ramdisk.create_clone(file_path)
+        else:
+            self.file_path=file_path
         self.fid=h5py.File(file_path, "r")
         self.traces=self.fid["sig"][:1024,:] 
         self.map=self.fid["mapping"]
@@ -18,10 +26,14 @@ class Raw:
         self.electrodes=[c[1] for c in self.map]
         self.xs=[c[2] for c in self.map]
         self.ys=[c[3] for c in self.map]
-        
+        preprocess.filter_hdf_traces(self, 100, 9000, cmr=False)
 
+    def filtered_filename(self):
+        return re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.original_file_path)
+    
     def __del__(self): 
         self.fid.close()
+        ramdisk.wipe()
         
 class Stim(Raw):
     

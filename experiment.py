@@ -12,13 +12,13 @@ class Experiment:
         self.explore_paths(experiment_folder)
         self.select_rec(stim_selection,'stim')
         self.select_rec(noise_selection,'noise')
-        self.select_rec(brain_selection,'brain')
+#         self.select_rec(brain_selection,'brain')
         self.print_all_rec_lists()
+        print(self.paths)
         self.recordings['stim']=Stim(self.paths['stim'][self.selections['stim']])
         self.recordings['noise']=Noise(self.paths['stim'][self.selections['stim']], self.recordings['stim'])
         plot_chip_surface_amps(self.recordings['stim'])
         plot_chip_surface_clusters(self.recordings['stim'])
-        self.recordings['noise'].filt_traces()
         
     def select_rec(self, selection, rec_type):
         if selection<0:
