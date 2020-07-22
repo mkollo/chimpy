@@ -23,14 +23,22 @@ class Experiment:
         self.select_rec(stim_selection,'stim')
         self.select_rec(noise_selection,'noise')
         self.unselect_rec('brain')
-        self.print_all_rec_lists()
+        print("Stim  recordings:")
+        self.print_rec_list('stim')
+        print("Noise recordings:")
+        self.print_rec_list('noise')
         print("Loading stim recording...")
-        self.recordings['stim']=Stim(self.paths['stim'][self.selections['stim']])
+        self.recordings['stim']=Stim_recording(self.paths['stim'][self.selections['stim']])
         print("Loading noise recording...")
-        self.recordings['noise']=Raw(self.paths['noise'][self.selections['noise']])
+        self.recordings['noise']=Recording(self.paths['noise'][self.selections['noise']])
         print("Calculating pixel amps...")
         plot_chip_surface_amps(self.recordings['stim'])
         plot_chip_surface_clusters(self.recordings['stim'])
+        print("Brain recordings:")
+        self.print_rec_list('brain')
+        
+    def load_brain_recording(self, selection, ram_copy=True):
+        self.recordings['brain']=Recording(self.paths['brain'][selection], ram_copy)
         
     def unselect_rec(self, rec_type):
         self.selections[rec_type]=-1
@@ -54,14 +62,6 @@ class Experiment:
             self.print_file_item(i==self.selections[rec_type],i,self.paths[rec_type][i])
         print("")
         
-    def print_all_rec_lists(self):
-        print("Stim  recordings:")
-        self.print_rec_list('stim')
-        print("Noise recordings:")
-        self.print_rec_list('noise')
-        print("Brain recordings:")
-        self.print_rec_list('brain')
-
-        
     def print_file_item(self, selected, n, file_path):
-        print('[{0}] {1:3} – {2}'.format(' ' if selected==False else 'x', str(n), os.path.basename(file_path)))
+        file_size=os.stat(file_path).st_size/(1024*1024*1024.0)
+        print('[{0}] {2:3} {1:5.1f}GB ––– {3}'.format(' ' if selected==False else 'x', file_size, str(n), os.path.basename(file_path)))

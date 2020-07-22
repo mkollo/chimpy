@@ -7,12 +7,14 @@
 # 
 # This work is licensed under the terms of the MIT license.  
 # For a copy, see <https://opensource.org/licenses/MIT>.
-                                 
+
+import multiprocessing
+from functools import partial
 import cupy
 import cusignal
 from scipy.signal import butter
 import numpy as np
-from tqdm import trange
+from tqdm import trange, tqdm
 import re
 import importlib
 from . import ramdisk
@@ -67,42 +69,43 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, batch_size=655
     return output
 
 def filter_hdf_traces(recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, batch_size=65536):
-        channels=stim_recording.data['channel']
-        channel_scales=cupy.asarray(1000/stim_recording.data['amp'], dtype=cupy.float32)[:,None]
-        recording.filtfid=ramdisk.create_hdf_ramfile(recording.filtered_filepath)
-        recording.fid.copy('/mapping', recording.filtfid)
-        recording.fid.copy('/message_0', recording.filtfid)
-        recording.fid.copy('/proc0', recording.filtfid)
-        recording.fid.copy('/settings', recording.filtfid)
-        recording.fid.copy('/time', recording.filtfid)
-        recording.fid.copy('/version', recording.filtfid)
-        if 'bits' in recording.fid.keys():
-            recording.fid.copy('/bits', recording.filtfid)
-        recording.filtfid.create_dataset("sig", (channels.shape[0], recording.fid["sig"].shape[1]), dtype='int16')
-        sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
-        n_chunks=recording.fid['sig'].shape[1]/batch_size
-        chunks=np.hstack((np.arange(n_chunks, dtype=int)*batch_size,recording.fid['sig'].shape[1]))
-        overlap=batch_size
-        batch=np.zeros((channels.shape[0],batch_size+overlap))
-        batch[:,:overlap]=np.array([recording.fid['sig'][channels,0],]*overlap).transpose()
-        for i in trange(len(chunks)-1, ncols=100):
-            idx_from=chunks[i]
-            idx_to=chunks[i+1]
-            batch=batch[:,:(idx_to-idx_from+overlap)]
-            batch[:,overlap:]=recording.fid['sig'][channels,idx_from:idx_to]
-            cusig=cupy.asarray(batch, dtype=cupy.float32)
-            cusig=cusig-cupy.mean(cusig)
-            if cmr:
-                cusig=cusig-cuda_median(cusig,0) 
-            cusig=cusignal.sosfilt(sos,cusig)
-            cusig=cupy.flipud(cusig)
-            cusig=cusignal.sosfilt(sos,cusig)
-            cusig=cupy.flipud(cusig)
-            cusig=cusig*channel_scales
-            recording.filtfid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
-            batch[:,:overlap]=batch[:,-overlap:]
-        recording.filtfid.close()
-        ramdisk.save_ramfile(recording.filtered_filepath)
+    channels=stim_recording.data['channel']
+    channel_scales=cupy.asarray(1000/stim_recording.data['amp'], dtype=cupy.float32)[:,None]
+    filtfid=ramdisk.create_hdf_ramfile(recording.filtered_filepath)
+    recording.fid.copy('/mapping', filtfid)
+    recording.fid.copy('/message_0', filtfid)
+    recording.fid.copy('/proc0', filtfid)
+    recording.fid.copy('/settings', filtfid)
+    recording.fid.copy('/time', filtfid)
+    recording.fid.copy('/version', filtfid)
+    if 'bits' in recording.fid.keys():
+        recording.fid.copy('/bits', filtfid)
+    filtfid.create_dataset("sig", (channels.shape[0], recording.fid["sig"].shape[1]), dtype='int16')
+    sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
+    n_chunks=recording.fid['sig'].shape[1]/batch_size
+    chunks=np.hstack((np.arange(n_chunks, dtype=int)*batch_size,recording.fid['sig'].shape[1]))
+    overlap=batch_size
+    batch=np.zeros((channels.shape[0],batch_size+overlap))
+    batch[:,:overlap]=np.array([recording.fid['sig'][channels,0],]*overlap).transpose()
+    for i in trange(len(chunks)-1, ncols=100):
+        idx_from=chunks[i]
+        idx_to=chunks[i+1]
+        batch=batch[:,:(idx_to-idx_from+overlap)]
+        batch[:,overlap:]=recording.fid['sig'][channels,idx_from:idx_to]
+        cusig=cupy.asarray(batch, dtype=cupy.float32)
+        cusig=cusig-cupy.mean(cusig)
+        if cmr:
+            cusig=cusig-cuda_median(cusig,0) 
+        cusig=cusignal.sosfilt(sos,cusig)
+        cusig=cupy.flipud(cusig)
+        cusig=cusignal.sosfilt(sos,cusig)
+        cusig=cupy.flipud(cusig)
+        cusig=cusig*channel_scales
+        filtfid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
+        batch[:,:overlap]=batch[:,-overlap:]
+    print("Writing filtered traces to disk...")
+    ramdisk.save_ramfile(recording.filtered_filepath)
+    return filtfid
 
 def get_spike_amps(s):
     mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));

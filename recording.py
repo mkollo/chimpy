@@ -23,11 +23,12 @@ from sklearn.cluster import AgglomerativeClustering
 
 import matplotlib.pyplot as plt
 
-class Raw:
+class Recording:
     
     def __init__(self, file_path, ram_copy=True):
+        self.ram_copy=ram_copy
         self.original_file_path=file_path
-        if ram_copy:
+        if self.ram_copy:
             self.file_path=ramdisk.create_clone(file_path)
         else:
             self.file_path=file_path
@@ -39,20 +40,21 @@ class Raw:
         self.ys=[c[3] for c in self.map]
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.original_file_path)
     
-    def filter(self, stim_recording):
-        if not(os.path.isfile()):
-            preprocess.filter_hdf_traces(self, stim_recording, 100, 9000, cmr=False)
+    def filter_traces(self, stim_recording):
+        if not(os.path.isfile(self.filtered_filepath)):
+            self.filtfid=preprocess.filter_traces_parallel(self, stim_recording, 100, 9000, cmr=False)
         else:
-            print("A filtered version of the recording already exists")
-            
+            self.filtfid=h5py.File(self.filtered_filepath, "r")
+            print("Filtered recording exists, loading from file...")
+
     def __del__(self): 
         self.fid.close()
         ramdisk.wipe()
         
-class Stim(Raw):
+class Stim_recording(Recording):
     
     def __init__(self, file_path):
-        Raw.__init__(self,file_path)
+        Recording.__init__(self,file_path)
         self.filt_traces = preprocess.filter_traces(self.fid["sig"][:1024,:], 100, 9000, cmr=False)
         self.amps = preprocess.get_spike_amps(self.filt_traces)
         self.collect_data()
