@@ -1,13 +1,3 @@
-#    ___ _  _ ___ __  __ _____   __
-#   / __| || |_ _|  \/  | _ \ \ / /
-#  | (__| __ || || |\/| |  _/\ V / 
-#   \___|_||_|___|_|  |_|_|   |_| 
-# 
-# Copyright (c) 2020 Mihaly Kollo. All rights reserved.
-# 
-# This work is licensed under the terms of the MIT license.  
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
 import os
 import subprocess
 import time
@@ -18,11 +8,11 @@ import hashlib
 
 class Slurm:
     
-    def __init__(self, job_name, n_tasks, input_path, gpu=False):
+    def __init__(self, job_name, n_tasks, gpu=False):
         self.job_name=job_name
         self.n_tasks=n_tasks
         self.gpu=gpu
-        self.generate_shell_script(input_path)
+        self.generate_shell_script()
         self.generate_out_file_names()
         self.generate_err_file_names()
         self.err_hashes=[]
@@ -54,33 +44,38 @@ class Slurm:
             if os.path.isfile(ef):
                 os.remove(ef)
 
-    def generate_shell_script(self, input_path):
+    def generate_shell_script(self):
         if os.path.isfile("slurm.sh"):
             os.remove("slurm.sh")
         file = open("slurm.sh", "w") 
         file.write("#!/bin/bash\n")
         file.write("#SBATCH --job-name=" + self.job_name + "\n")
-        file.write("#SBATCH --ntasks=12\n")
-        file.write("#SBATCH --nodes=12\n")
-#         file.write("#SBATCH --array=0-" + str(self.n_tasks-1) + "\n")
+        file.write("#SBATCH --ntasks=11\n")
+        file.write("#SBATCH --nodes=11\n")
         file.write("#SBATCH --time=1:00:0\n")
         file.write("#SBATCH --mem=32G\n")
+        file.write("#SBATCH --partition=gpu\n")
         if self.gpu:
             file.write("#SBATCH --partition=gpu\n")
             file.write("#SBATCH --gres=gpu:1\n")
         else:
-            file.write("#SBATCH --partition=cpu\n")
-        file.write("#SBATCH --output=" + self.job_name + "_%a.out\n")
-        file.write("#SBATCH --error=" + self.job_name + "_%a.err\n")
+            file.write("#SBATCH --gpus-per-node=1\n")
+        file.write("#SBATCH --exclusive\n")
+        file.write("#SBATCH --output=" + self.job_name + ".out\n")
+        file.write("#SBATCH --error=" + self.job_name + ".err\n")
         file.write("\n")
+        file.write("export OMPI_MCA_mpi_cuda_support=0\n")
+        file.write("export OMPI_MCA_mpi_warn_on_fork=0\n")
         file.write("conda acticate chimpy-mpi &> /dev/null\n")
         file.write("module restore chimpy &> /dev/null\n")
-        file.write("srun --mpi=pmix_v3 /camp/home/kollom/working/mkollo/.conda/chimpy-mpi/bin/python chimpy/" + self.job_name + ".py ${SLURM_ARRAY_TASK_ID} "+input_path)
+        file.write("export OMPI_MCA_btl_openib_warn_nonexistent_if=0\n")
+        file.write("mpirun -np 11 /camp/home/kollom/working/mkollo/.conda/chimpy-mpi/bin/python chimpy/" + self.job_name + ".py")
         file.close()
     
     def get_progress(self, filename):
         try:
             lastline=subprocess.check_output(['tail', '-1', filename]).decode("utf-8")
+            print(lastline)
             if lastline=="DONE\n":
                 return 1000
             elif lastline=="":
@@ -103,7 +98,7 @@ class Slurm:
                 if os.path.isfile(ef):
                     with open (ef, "r") as errfile:
                         err_string=errfile.read()
-                        if len(err_string)>0 and not(err_string.isspace()) and self.errors:
+                        if len(err_string)>0 and not(err_string.isspace()):
                             print('\33[91m'+err_string+'\033[0m')
         self.err_hashes=new_hashes
         
@@ -124,8 +119,7 @@ class Slurm:
             self.print_errors()
         print("Finished all Slurm jobs")   
 
-    def run(self, errors=True):
-        self.errors=errors
+    def run(self):
         process = subprocess.Popen(['sbatch', 'slurm.sh'])
         self.monitor()
         self.clean_up_out_files()
