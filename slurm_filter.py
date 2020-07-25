@@ -10,6 +10,7 @@
 
 import mpi4py
 mpi4py.rc.recv_mprobe = False
+mpi4py.rc.threads = False
 from mpi4py import MPI
 
 import numpy as np
@@ -17,6 +18,7 @@ import sys
 import h5py
 import time
 import os
+import json
 
 from scipy.signal import butter
 import cupy
@@ -28,14 +30,22 @@ AMPS_TAG = 72
 DATA_TAG = 73
 DIE_TAG = 74
 
-sample_batch_size=65536
-cmr=False
-order=3
-low_cutoff=100
-high_cutoff=9000
-amp_list=np.ones((1024))*250
-channel_scales=1000/amp_list
 
+with open('params.json') as json_file:
+    params = json.load(json_file)
+    
+sample_batch_size=params['sample_batch_size']
+channels=np.array(params['channels'])
+n_samples=params['n_samples']
+cmr=params['cmr']
+order=params['order']
+low_cutoff=params['low_cutoff']
+high_cutoff=params['high_cutoff']
+amp_list=np.array(params['amp_list'])
+in_file_name=params['in_file_name']
+
+channel_scales=1000/amp_list
+n_channels=channels.shape[0]
 
 comm = MPI.COMM_WORLD
 nproc = comm.Get_size()
@@ -47,13 +57,10 @@ sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='s
 
 comm.Barrier()
 if iproc == MASTER_PROCESS:
-    in_file = h5py.File(sys.argv[1], 'r')
-    out_file = h5py.File(sys.argv[1].split('.raw.h5')[0]+".filt.h5", 'w')
-    out_dset = out_file.create_dataset('sig', in_file['sig'].shape, dtype='float32')
-    out_dset[[1024, 1025, 1026, 1027],:]=in_file['sig'][[1024, 1025, 1026, 1027],:]
-    channels=np.arange(1024)
+    in_file = h5py.File(in_file_name, 'r')
+    out_file = h5py.File(in_file_name.split('.raw.h5')[0]+".filt.h5", 'w')
+    out_dset = out_file.create_dataset('sig', (n_channels, n_samples), dtype='float32')
     channel_chunks=np.array_split(channels, nproc-1)
-    n_samples=in_file['sig'].shape[1]
     n_sample_chunks=n_samples/sample_batch_size
     sample_chunk_borders=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_batch_size,n_samples))
     sample_chunks=dict(zip(np.arange(nproc-1),[np.array([sample_chunk_borders[i:i+2].copy() for i in range(len(sample_chunk_borders)-1)])]*(nproc-1)))
@@ -79,18 +86,11 @@ if iproc == MASTER_PROCESS:
                 
         data=comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
         rnk = status.Get_source()
-        print("Data from "+str(rnk)+" shape: "+str(data.shape))
-        print("Data from "+str(rnk)+" out  : "+str(out_dset[channel_chunks[rnk-1],current_chunks[rnk-1][0]:current_chunks[rnk-1][1]].shape))
-
         out_dset[channel_chunks[rnk-1],current_chunks[rnk-1][0]:current_chunks[rnk-1][1]]=data
         current_chunks[rnk-1]=None
-        print(sum([sample_chunks[i].shape[0] for i in np.arange(nproc-1)])+sum([cc is not None for cc in current_chunks]))
-        print(sum([sample_chunks[i].shape[0] for i in np.arange(nproc-1)]))
-        print(sum([cc is not None for cc in current_chunks]))
-        print(current_chunks)
         n_current_chunks=sum([current_chunks[cc] is not None for cc in current_chunks])
         n_remaining_chunks=sum([sample_chunks[i].shape[0] for i in np.arange(nproc-1)])
-        
+        print((1-n_remaining_chunks/n_total_chunks)*999, flush=True)
     for proc in range(nproc-1):
         comm.send(-1, proc, tag=DIE_TAG)    
 else: 
@@ -118,9 +118,7 @@ else:
 
 if iproc == MASTER_PROCESS:
     print(int(1000), flush=True)
-    print('DONE', flush=True)
     in_file.close()
     out_file.close() 
-    
-MPI.Finalize()
+    print('DONE', flush=True)
 
