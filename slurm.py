@@ -61,8 +61,11 @@ class Slurm:
         file.write("conda acticate chimpy-mpi &> /dev/null\n")
         file.write("module restore chimpy &> /dev/null\n")
         file.write("export OMPI_MCA_btl_openib_warn_nonexistent_if=0\n")
+        file.write("export OMPI_MCA_btl_openib_allow_ib=1\n")
         file.write("mpirun -np "+str(self.nodes)+" /camp/home/kollom/working/mkollo/.conda/chimpy-mpi/bin/python chimpy/" + self.job_name + ".py")
         file.close()
+        print(os.path.isfile("slurm.sh"))
+
 
     def is_task_running(self):
         p = Popen(['squeue','--partition=gpu','--user=kollom','--noheader'], stdout=PIPE)
@@ -127,7 +130,9 @@ class Slurm:
         print("Finished all Slurm jobs")  
 
     def run(self, params, errors=True):
-        with open('params.json', 'w') as fp:
+        self.kill_tasks()
+        time.sleep(1)
+        with open('../params.json', 'w') as fp:
             json.dump(params, fp)
         process = subprocess.Popen(['sbatch', 'slurm.sh'])
         if self.monitor(errors)==False:
@@ -136,4 +141,5 @@ class Slurm:
         self.kill_tasks()
        
     def __del__(self):
-        os.remove("slurm.sh")
+#         os.remove("slurm.sh")
+        pass

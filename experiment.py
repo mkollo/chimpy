@@ -29,6 +29,8 @@ class Experiment:
         self.print_rec_list('noise')
         print("Loading stim recording...")
         self.recordings['stim']=Stim_recording(self.paths['stim'][self.selections['stim']])
+        self.strong_pixels=self.recordings['stim'].amps[0].astype(int)
+        self.weak_pixels=sorted(list(set(self.recordings['stim'].channels)-set(self.strong_pixels)))
         print("Loading noise recording...")
         self.recordings['noise']=Recording(self.paths['noise'][self.selections['noise']])
         print("Calculating pixel amps...")
