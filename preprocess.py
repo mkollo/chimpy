@@ -17,10 +17,9 @@ import numpy as np
 from tqdm import trange, tqdm
 import re
 import importlib
-from . import ramdisk
-importlib.reload(ramdisk)
 import h5py
 from chimpy.slurm import Slurm
+from chimpy.ramfile import RamFile
 
 def cuda_median(a, axis=1):
     a = cupy.asanyarray(a)
@@ -72,7 +71,7 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_s
         chunk[:,:overlap]=chunk[:,-overlap:]
     return output
 
-def filter_experiment_slurm(experiment, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1):
+def filter_experiment_slurm(experiment, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
     channels=stim_recording.data['channel']
     if n_samples==-1:
         fid=h5py.File(recording.file_path, "r")
@@ -103,9 +102,9 @@ def filter_experiment_local(experiment, low_cutoff, high_cutoff, order=3, cmr=Fa
 #     Optionally save file into a tmpfs partition for processing
     if ram_copy:
         in_ramfile=RamFile(brain_recording.filepath, 'r')
-        in_filepath=in_ramfile.file_path
+        in_filepath=in_ramfile.ram_filepath
         out_ramfile=RamFile(brain_recording.filtered_filepath, 'w')
-        out_filepath=out_ramfile.file_path
+        out_filepath=out_ramfile.ram_filepath
     else:
         in_filepath=brain_recording.filepath
         out_filepath=brain_recording.filtered_filepath
@@ -130,7 +129,7 @@ def filter_experiment_local(experiment, low_cutoff, high_cutoff, order=3, cmr=Fa
     sample_chunks=np.hstack((np.arange(n_chunks, dtype=int)*sample_chunk_size,n_samples))
     overlap=sample_chunk_size
     chunk=np.zeros((channels.shape[0],sample_chunk_size+overlap))
-    chunk[:,:overlap]=np.array([list(range(channels.shape[0])),]*overlap).transpose()
+    chunk[:,:overlap]=np.array([in_fid['sig'][channels,0],]*overlap).transpose()
     for i in trange(len(sample_chunks)-1, ncols=100, position=0, leave=True):
         idx_from=sample_chunks[i]
         idx_to=sample_chunks[i+1]
