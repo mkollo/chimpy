@@ -12,26 +12,21 @@ import os
 import shutil
 import h5py
 
-def create_clone(filepath):
-    if not(os.path.isdir("/dev/shm/chime_temp")):
-        os.mkdir("/dev/shm/chime_temp")
-    memfilepath="/dev/shm/chime_temp/"+os.path.basename(filepath)
-    shutil.copy(filepath, memfilepath)
-    os.chmod(memfilepath, 0o755)
-    return memfilepath
+class RamFile:
+    
+    def __init__(self, filepath, tmpfs_path="/dev/shm", mode="r"):
+        self.mode=mode
+        self.tmpfs_path=tmpfs_path
+        self.filepath=filepath
+        if not(os.path.isdir(self.tmpfs_path+"/chimpy_temp")):
+            os.mkdir(self.tmpfs_path+"/chimpy_temp")
+        self.ram_filepath=self.tmpfs_path+"/chimpy_temp/"+os.path.basename(filepath)
+        if mode=="r":
+            shutil.copy(filepath, self.ram_filepath)
+            os.chmod(self.ram_filepath, 0o755)
 
-def create_hdf_ramfile(filepath):
-    if not(os.path.isdir("/dev/shm/chime_temp")):
-        os.mkdir("/dev/shm/chime_temp")
-    memfilepath="/dev/shm/chime_temp/"+os.path.basename(filepath)
-    fid=h5py.File(memfilepath, 'w')
-    os.chmod(memfilepath, 0o755)
-    return fid
+    def save():
+        shutil.copy(self.ram_filepath, self.filepath)
 
-def save_ramfile(filepath):
-    memfilepath="/dev/shm/chime_temp/"+os.path.basename(filepath)
-    shutil.copy(memfilepath, filepath)
-    os.chmod(memfilepath, 0o755)
-
-def wipe():
-    shutil.rmtree("/dev/shm/chime_temp", ignore_errors=True)
+    def __del__():
+        shutil.rmtree(self.tmpfs_path+"/chimpy_temp", ignore_errors=True)

@@ -10,7 +10,8 @@
                                  
 import glob
 import os
-from chimpy import *
+from chimpy.recording import Recording, StimRecording
+from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters
 
 class Experiment:
     
@@ -28,9 +29,9 @@ class Experiment:
         print("Noise recordings:")
         self.print_rec_list('noise')
         print("Loading stim recording...")
-        self.recordings['stim']=Stim_recording(self.paths['stim'][self.selections['stim']])
-        self.strong_pixels=self.recordings['stim'].amps[0].astype(int)
-        self.weak_pixels=sorted(list(set(self.recordings['stim'].channels)-set(self.strong_pixels)))
+        self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']])
+        self.strong_pixels=self.recordings['stim'].strong_pixels
+        self.weak_pixels=self.recordings['stim'].weak_pixels
         print("Loading noise recording...")
         self.recordings['noise']=Recording(self.paths['noise'][self.selections['noise']])
         print("Calculating pixel amps...")
@@ -39,8 +40,10 @@ class Experiment:
         print("Brain recordings:")
         self.print_rec_list('brain')
         
-    def load_brain_recording(self, selection, ram_copy=True):
-        self.recordings['brain']=Recording(self.paths['brain'][selection], ram_copy)
+    def select_brain_recording(self, selection):
+        self.select_rec(selection, 'brain')
+        self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']])
+        self.print_rec_list('brain')
         
     def unselect_rec(self, rec_type):
         self.selections[rec_type]=-1
@@ -50,6 +53,13 @@ class Experiment:
             self.selections[rec_type]=len(self.paths[rec_type])-1
         else:
             self.selections[rec_type]=selection
+            
+    def select_brain_rec(self, selection):
+        if selection<0:
+            self.selections['brain']=len(self.paths[rec_type])-1
+        else:
+            self.selections['brain']=selection
+        self.print_rec_list('brain')
             
     def explore_paths(self, experiment_folder):
         self.paths['stim']=glob.glob(self.base_dir+experiment_folder+"/stim/*.raw.h5")
@@ -64,6 +74,6 @@ class Experiment:
             self.print_file_item(i==self.selections[rec_type],i,self.paths[rec_type][i])
         print("")
         
-    def print_file_item(self, selected, n, file_path):
-        file_size=os.stat(file_path).st_size/(1024*1024*1024.0)
-        print('[{0}] {2:3} {1:5.1f}GB ––– {3}'.format(' ' if selected==False else 'x', file_size, str(n), os.path.basename(file_path)))
+    def print_file_item(self, selected, n, filepath):
+        file_size=os.stat(filepath).st_size/(1024*1024*1024.0)
+        print('[{0}] {2:3} {1:5.1f}GB ––– {3}'.format(' ' if selected==False else 'x', file_size, str(n), os.path.basename(filepath)))

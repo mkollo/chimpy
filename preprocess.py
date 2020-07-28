@@ -45,10 +45,12 @@ def cuda_median(a, axis=1):
         indexer[axis] = slice(index-1, index+1)
     return cupy.mean(part[indexer], axis=axis)
 
-def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536):
+def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1):
+    if n_samples==-1:
+        n_samples=s.shape[1]
     sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
-    n_chunks=s.shape[1]/sample_chunk_size
-    chunks=np.hstack((np.arange(n_chunks, dtype=int)*sample_chunk_size,s.shape[1]))
+    n_chunks=n_samples/sample_chunk_size
+    chunks=np.hstack((np.arange(n_chunks, dtype=int)*sample_chunk_size,n_samples))
     output=np.empty(s.shape)
     overlap=sample_chunk_size
     chunk=np.zeros((s.shape[0],sample_chunk_size+overlap))
@@ -70,9 +72,9 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_s
         chunk[:,:overlap]=chunk[:,-overlap:]
     return output
 
-def filter_traces_slurm(recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, samples=-1):
+def filter_experiment_slurm(experiment, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1):
     channels=stim_recording.data['channel']
-    if samples==-1:
+    if n_samples==-1:
         fid=h5py.File(recording.file_path, "r")
         n_samples=fid['sig'].shape[1]
         fid.close()
@@ -92,30 +94,48 @@ def filter_traces_slurm(recording, stim_recording, low_cutoff, high_cutoff, orde
     slurm.run(params)
     
 
-def filter_traces_hdf(recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536):
-    channels=stim_recording.data['channel']
-    channel_scales=cupy.asarray(1000/stim_recording.data['amp'], dtype=cupy.float32)[:,None]
-    filtfid=ramdisk.create_hdf_ramfile(recording.filtered_filepath)
-    recording.fid.copy('/mapping', filtfid)
-    recording.fid.copy('/message_0', filtfid)
-    recording.fid.copy('/proc0', filtfid)
-    recording.fid.copy('/settings', filtfid)
-    recording.fid.copy('/time', filtfid)
-    recording.fid.copy('/version', filtfid)
-    if 'bits' in recording.fid.keys():
-        recording.fid.copy('/bits', filtfid)
-    filtfid.create_dataset("sig", (channels.shape[0], recording.fid["sig"].shape[1]), dtype='int16')
+def filter_experiment_local(experiment, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
+    stim_recording=experiment.recordings['stim']
+    brain_recording=experiment.recordings['brain']
+    channels=np.array(stim_recording.channels)[experiment.strong_pixels]
+    amps=np.array(stim_recording.amps)[stim_recording.strong_pixels]
+    scales=1000/amps
+#     Optionally save file into a tmpfs partition for processing
+    if ram_copy:
+        in_ramfile=RamFile(brain_recording.filepath, 'r')
+        in_filepath=in_ramfile.file_path
+        out_ramfile=RamFile(brain_recording.filtered_filepath, 'w')
+        out_filepath=out_ramfile.file_path
+    else:
+        in_filepath=brain_recording.filepath
+        out_filepath=brain_recording.filtered_filepath
+#     Create output file
+    in_fid=h5py.File(in_filepath, 'r')
+    out_fid=h5py.File(out_filepath, 'w')
+    if n_samples==-1:
+        n_samples=in_fid['sig'].shape[1]
+    in_fid.copy('/mapping', out_fid)
+    in_fid.copy('/message_0', out_fid)
+    in_fid.copy('/proc0', out_fid)
+    in_fid.copy('/settings', out_fid)
+    in_fid.copy('/time', out_fid)
+    in_fid.copy('/version', out_fid)
+    if 'bits' in in_fid.keys():
+        in_fid.copy('/bits', out_fid)
+    out_fid.create_dataset("sig", (channels.shape[0], n_samples), dtype='int16')
+#     Create filter: cutoff / 0.5 * fs
     sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
-    n_chunks=recording.fid['sig'].shape[1]/sample_chunk_size
-    chunks=np.hstack((np.arange(n_chunks, dtype=int)*sample_chunk_size,recording.fid['sig'].shape[1]))
+#     Create chunks
+    n_chunks=n_samples/sample_chunk_size
+    sample_chunks=np.hstack((np.arange(n_chunks, dtype=int)*sample_chunk_size,n_samples))
     overlap=sample_chunk_size
-    chunk=np.zeros((channels.shape[0],chunk_sample_chunk_sizesize+overlap))
-    chunk[:,:overlap]=np.array([recording.fid['sig'][channels,0],]*overlap).transpose()
-    for i in trange(len(chunks)-1, ncols=100, position=0, leave=True):
-        idx_from=chunks[i]
-        idx_to=chunks[i+1]
+    chunk=np.zeros((channels.shape[0],sample_chunk_size+overlap))
+    chunk[:,:overlap]=np.array([list(range(channels.shape[0])),]*overlap).transpose()
+    for i in trange(len(sample_chunks)-1, ncols=100, position=0, leave=True):
+        idx_from=sample_chunks[i]
+        idx_to=sample_chunks[i+1]
         chunk=chunk[:,:(idx_to-idx_from+overlap)]
-        chunk[:,overlap:]=recording.fid['sig'][channels,idx_from:idx_to]
+        chunk[:,overlap:]=in_fid['sig'][channels,idx_from:idx_to]
         cusig=cupy.asarray(chunk, dtype=cupy.float32)
         cusig=cusig-cupy.mean(cusig)
         if cmr:
@@ -124,16 +144,21 @@ def filter_traces_hdf(recording, stim_recording, low_cutoff, high_cutoff, order=
         cusig=cupy.flipud(cusig)
         cusig=cusignal.sosfilt(sos,cusig)
         cusig=cupy.flipud(cusig)
-        cusig=cusig*channel_scales
-        filtfid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
+        cusig=cusig*cupy.asarray(scales, dtype=cupy.float32)[:,None]
+        out_fid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
         chunk[:,:overlap]=chunk[:,-overlap:]
-    print("Writing filtered traces to disk...")
-    ramdisk.save_ramfile(recording.filtered_filepath)
-    return filtfid
+#     Writing filtered traces to disk...
+    in_fid.close()
+    out_fid.close()
+    if ram_copy:
+        in_ramfile.save()
+        out_ramfile.save()
+        del in_ramfile, out_ramfile
+    return out_filepath
 
 def get_spike_amps(s):
     mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));
     spike_threshold=-cupy.std(mean_stim_trace)*4;
     crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2];
     amps=np.abs(cupy.asnumpy(cupy.mean(s[:,crossings[np.diff(crossings, prepend=0)>1]+2],axis=1)))
-    return np.vstack((np.where(amps>50),amps[amps>50]))    
+    return amps
