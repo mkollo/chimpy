@@ -30,8 +30,8 @@ class Experiment:
         self.print_rec_list('noise')
         print("Loading stim recording...")
         self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']])
-        self.strong_pixels=self.recordings['stim'].strong_pixels
-        self.weak_pixels=self.recordings['stim'].weak_pixels
+        self.connected_pixels=self.recordings['stim'].connected_pixels
+        self.unconnected_pixels=self.recordings['stim'].unconnected_pixels
         print("Loading noise recording...")
         self.recordings['noise']=Recording(self.paths['noise'][self.selections['noise']])
         print("Calculating pixel amps...")

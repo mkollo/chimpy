@@ -25,16 +25,18 @@ class Slurm:
         self.job_name=job_name
         self.gpu=gpu
         self.nodes=nodes
+        self.clean_up_out_files()
         self.generate_shell_script()
         self.err_hash=None
         
     def clean_up_out_files(self):
-        if os.path.isfile(self.job_name + ".out"):
-            os.remove(self.job_name + ".out")
-        if os.path.isfile(self.job_name + ".err"):
-            os.remove(self.job_name + ".err")
-        if os.path.isfile('params.json'):
-            os.remove('params.json')
+#         if os.path.isfile(self.job_name + ".out"):
+#             os.remove(self.job_name + ".out")
+#         if os.path.isfile(self.job_name + ".err"):
+#             os.remove(self.job_name + ".err")
+#         if os.path.isfile('params.json'):
+#             os.remove('params.json')
+        pass
 
     def generate_shell_script(self):
         if os.path.isfile("slurm.sh"):
@@ -46,7 +48,6 @@ class Slurm:
         file.write("#SBATCH --nodes="+str(self.nodes)+"\n")
         file.write("#SBATCH --time=1:00:0\n")
         file.write("#SBATCH --mem=32G\n")
-        file.write("#SBATCH --partition=gpu\n")
         if self.gpu:
             file.write("#SBATCH --partition=gpu\n")
             file.write("#SBATCH --gpus-per-node=1\n")
@@ -58,14 +59,12 @@ class Slurm:
         file.write("\n")
         file.write("export OMPI_MCA_mpi_cuda_support=0\n")
         file.write("export OMPI_MCA_mpi_warn_on_fork=0\n")
-        file.write("conda acticate chimpy-mpi &> /dev/null\n")
+        file.write("conda activate chimpy &> /dev/null\n")
         file.write("module restore chimpy &> /dev/null\n")
         file.write("export OMPI_MCA_btl_openib_warn_nonexistent_if=0\n")
         file.write("export OMPI_MCA_btl_openib_allow_ib=1\n")
-        file.write("mpirun -np "+str(self.nodes)+" /camp/home/kollom/working/mkollo/.conda/chimpy-mpi/bin/python chimpy/" + self.job_name + ".py")
+        file.write("mpirun -np "+str(self.nodes)+" /camp/home/kollom/working/mkollo/.conda/chimpy/bin/python chimpy/" + self.job_name + ".py\n")
         file.close()
-        print(os.path.isfile("slurm.sh"))
-
 
     def is_task_running(self):
         p = Popen(['squeue','--partition=gpu','--user=kollom','--noheader'], stdout=PIPE)
@@ -132,7 +131,7 @@ class Slurm:
     def run(self, params, errors=True):
         self.kill_tasks()
         time.sleep(1)
-        with open('../params.json', 'w') as fp:
+        with open('params.json', 'w') as fp:
             json.dump(params, fp)
         process = subprocess.Popen(['sbatch', 'slurm.sh'])
         if self.monitor(errors)==False:

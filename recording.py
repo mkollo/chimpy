@@ -17,8 +17,6 @@ from . import preprocess
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 
-import matplotlib.pyplot as plt
-
 class Recording:
     
     def __init__(self, filepath):
@@ -34,21 +32,18 @@ class Recording:
         
 class StimRecording(Recording):
     
-    def __init__(self, filepath):
+    def __init__(self, filepath, connected_threshold=50):
         Recording.__init__(self,filepath)
         fid=h5py.File(self.filepath, "r")
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
         fid.close()
         self.amps = preprocess.get_spike_amps(self.filt_traces[self.channels,:])
         self.clusters = self.cluster_pixels()
-        self.strong_pixels, self.weak_pixels=self.strong_and_weak_pixels()
+        self.connected_pixels = np.where(self.amps>50)[0]
+        self.unconnected_pixels = np.where(self.amps<=50)[0]
         
     def cluster_pixels(self):   
         coords=np.transpose(np.vstack((self.xs,self.ys)))
         clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=35, linkage='single').fit(coords)
         return clustering.labels_
     
-    def strong_and_weak_pixels(self):
-        strong_pixels=np.where(self.amps>50)[0]
-        weak_pixels=np.where(self.amps<=50)[0]
-        return strong_pixels, weak_pixels
