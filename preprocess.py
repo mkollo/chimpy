@@ -75,8 +75,8 @@ def filter_experiment_slurm(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
     #     Optionally save file into a tmpfs partition for processing
     stim_recording=exp.recordings['stim']
     brain_recording=exp.recordings['brain']
-    channels=np.array(stim_recording.channels)
-    amps=np.array(stim_recording.amps)
+    channels=stim_recording.channels
+    amps=stim_recording.amps
     scales=1000/amps
     in_filepath=brain_recording.filepath
     out_filepath=brain_recording.filtered_filepath
@@ -100,10 +100,10 @@ def filter_experiment_slurm(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
 def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
     stim_recording=exp.recordings['stim']
     brain_recording=exp.recordings['brain']
-    channels=np.array(stim_recording.channels)
-    amps=np.array(stim_recording.amps)
+    channels=stim_recording.channels
+    amps=stim_recording.amps
     scales=1000/amps
-    n_strong_pixels=len(exp.connected_pixels)
+    n_channels=stim_recording.channels.shape[0]
 #     Optionally save file into a tmpfs partition for processing
     if ram_copy:
         in_ramfile=RamFile(brain_recording.filepath, 'r')
@@ -118,7 +118,7 @@ def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
     out_fid=h5py.File(out_filepath, 'w')
     if n_samples==-1:
         n_samples=in_fid['sig'].shape[1]
-    out_fid['mapping']=in_fid['mapping'][exp.connected_pixels]
+    out_fid['mapping']=in_fid['mapping'][stim_recording.connected_in_mapping]
     in_fid.copy('/message_0', out_fid)
     in_fid.copy('/proc0', out_fid)
     in_fid.copy('/settings', out_fid)
@@ -126,20 +126,20 @@ def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
     in_fid.copy('/version', out_fid)
     if 'bits' in in_fid.keys():
         in_fid.copy('/bits', out_fid)
-    out_fid.create_dataset("sig", (n_strong_pixels, n_samples), dtype='float32')
+    out_fid.create_dataset("sig", (n_channels, n_samples), dtype='float32')
 #     Create filter: cutoff / 0.5 * fs
     sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
 #     Create chunks
     n_sample_chunks=n_samples/sample_chunk_size
     sample_chunks=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_chunk_size,n_samples))
     overlap=sample_chunk_size
-    chunk=np.zeros((n_strong_pixels,sample_chunk_size+overlap))
-    chunk[:,:overlap]=np.array([in_fid['sig'][channels[exp.connected_pixels],0],]*overlap).transpose()
+    chunk=np.zeros((n_channels,sample_chunk_size+overlap))
+    chunk[:,:overlap]=np.array([in_fid['sig'][channels,0],]*overlap).transpose()
     for i in trange(len(sample_chunks)-1, ncols=100, position=0, leave=True):
         idx_from=sample_chunks[i]
         idx_to=sample_chunks[i+1]
         chunk=chunk[:,:(idx_to-idx_from+overlap)]
-        chunk[:,overlap:]=in_fid['sig'][channels[exp.connected_pixels],idx_from:idx_to]
+        chunk[:,overlap:]=in_fid['sig'][channels,idx_from:idx_to]
         cusig=cupy.asarray(chunk, dtype=cupy.float32)
         cusig=cusig-cupy.mean(cusig)
         if cmr:
@@ -148,7 +148,7 @@ def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
         cusig=cupy.flipud(cusig)
         cusig=cusignal.sosfilt(sos,cusig)
         cusig=cupy.flipud(cusig)
-        cusig=cusig*cupy.asarray(scales[exp.connected_pixels], dtype=cupy.float32)[:,None]
+        cusig=cusig*cupy.asarray(scales, dtype=cupy.float32)[:,None]
         out_fid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
         chunk[:,:overlap]=chunk[:,-overlap:]
 #     Writing filtered traces to disk...
@@ -172,3 +172,11 @@ def get_spike_amps(s):
     significant_peaks=sig[peaks[0],peaks[1]]<(-5*mean_std)
     amps=np.median(cupy.asnumpy(sig[:,peaks[1][significant_peaks]]*-1),axis=1)
     return amps
+
+def power_spectrum(data):
+    fourier_transform = np.fft.rfft(data)
+    abs_fourier_transform = np.abs(fourier_transform)
+    power_spectrum = np.square(abs_fourier_transform)
+    power_spectrum_smoothed=np.convolve(power_spectrum, np.ones((20,))/20, mode='valid')
+    frequency = np.linspace(0, 10000, len(power_spectrum_smoothed))
+    return frequency, power_spectrum_smoothed

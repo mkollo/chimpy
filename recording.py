@@ -30,12 +30,13 @@ class Recording:
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
         
-    def remove_unconnected(self, connected_pixels):
-        self.good_channels=np.searchsorted(self.channels,connected_pixels)
-        self.channels=self.channels[self.good_channels]
-        self.electrodes=self.electrodes[self.good_channels]
-        self.xs=self.xs[self.good_channels]
-        self.ys=self.ys[self.good_channels]        
+    def remove_unconnected(self):
+        connected=np.searchsorted(self.channels,self.connected_pixels)
+        self.connected_in_mapping=connected
+        self.channels=self.channels[connected]
+        self.electrodes=self.electrodes[connected]
+        self.xs=self.xs[connected]
+        self.ys=self.ys[connected]
         
 class StimRecording(Recording):
     
@@ -45,16 +46,14 @@ class StimRecording(Recording):
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
         fid.close()
         self.amps = preprocess.get_spike_amps(self.filt_traces)        
-        self.connected_pixels = np.setdiff1d(np.where((self.amps>50)), np.array(range(1024,1027)))
-        self.unconnected_pixels = np.setdiff1d(np.array(range(1024)),self.connected_pixels)
-        self.remove_unconnected(self.connected_pixels)
-        self.clusters = self.cluster_pixels()
+        self.connected_pixels = np.where(self.amps>50)[0]
+        self.unconnected_pixels = np.setdiff1d(np.array(range(1028)),self.connected_pixels)
+        self.remove_unconnected()
+        self.amps = self.amps[self.connected_pixels]
+        self.clusters = self.cluster_pixels()        
         
     def cluster_pixels(self):   
         coords=np.transpose(np.vstack((self.xs,self.ys, self.amps)))
         clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=35, linkage='single').fit(coords)
         return clustering.labels_
     
-    def remove_unconnected(self, connected_pixels):
-        super().remove_unconnected(self.connected_pixels)
-        self.amps=self.amps[self.good_channels]

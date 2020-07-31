@@ -10,6 +10,7 @@
                                  
 import glob
 import os
+import chimpy
 from chimpy.recording import Recording, StimRecording
 from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters
 

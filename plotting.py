@@ -12,6 +12,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.rcParams['figure.figsize'] = [8, 3]
 import numpy as np
+from chimpy.preprocess import power_spectrum
 
 def plot_chip_surface_amps(stim_recording):  
     amps=np.array(stim_recording.amps)
@@ -35,3 +36,12 @@ def plot_chip_surface_clusters(stim_recording):
     plt.title("Chip surface - " + str(len(stim_recording.channels)) + " connected pixels, " + str(len(np.unique(stim_recording.clusters))) + " clusters")
     plt.colorbar()
     plt.show()
+
+def plot_power_spectrum(data1, data2=None):
+    spectrum1=power_spectrum(data1)
+    plt.plot(spectrum1[0][10:], spectrum1[1][10:])
+    if data2 is not None:
+        spectrum2=power_spectrum(data2)
+        plt.plot(spectrum2[0][10:], spectrum2[1][10:])
+    plt.yscale('log')
+    plt.xlabel('Frequency (Hz)')
