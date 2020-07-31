@@ -50,7 +50,7 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_s
     sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
     n_sample_chunks=n_samples/sample_chunk_size
     chunks=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_chunk_size,n_samples))
-    output=np.empty(s.shape)
+    output=np.empty((s.shape[0], n_samples))
     overlap=sample_chunk_size
     chunk=np.zeros((s.shape[0],sample_chunk_size+overlap))
     chunk[:,:overlap]=np.array([s[:,0],]*overlap).transpose()
@@ -159,9 +159,16 @@ def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
         out_ramfile.save()
         del in_ramfile, out_ramfile
 
-def get_spike_amps(s):
+def get_spike_crossings(s):
     mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));
-    spike_threshold=-cupy.std(mean_stim_trace)*4;
+    spike_threshold=-cupy.std(mean_stim_trace)*7;
     crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2];
-    amps=np.abs(cupy.asnumpy(cupy.mean(s[:,crossings[np.diff(crossings, prepend=0)>1]+2],axis=1)))
+    return crossings[np.diff(crossings, prepend=0)>1]
+    
+def get_spike_amps(s):
+    sig=cupy.asarray(s[:1024,:20000])
+    peaks=cusignal.peak_finding.peak_finding.argrelmin(sig, order=20, axis=1)
+    mean_std=cupy.mean(cupy.std(sig,axis=1))
+    significant_peaks=sig[peaks[0],peaks[1]]<(-5*mean_std)
+    amps=np.median(cupy.asnumpy(sig[:,peaks[1][significant_peaks]]*-1),axis=1)
     return amps

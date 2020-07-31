@@ -13,14 +13,12 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams['figure.figsize'] = [8, 3]
 import numpy as np
 
-def plot_chip_surface_amps(stim_recording):
-    xs=np.array(stim_recording.xs)[stim_recording.connected_pixels]
-    ys=np.array(stim_recording.ys)[stim_recording.connected_pixels]
-    amps=np.array(stim_recording.amps)[stim_recording.connected_pixels]
-    plt.scatter(xs,ys,c=amps, marker='s', s=1, cmap="magma_r")
+def plot_chip_surface_amps(stim_recording):  
+    amps=np.array(stim_recording.amps)
+    plt.scatter(stim_recording.xs,stim_recording.ys,c=amps, marker='s', s=1, cmap="magma_r")
     plt.xlim([0, 3900])
     plt.ylim([0, 2100])
-    plt.clim([0, max(stim_recording.amps), ])
+    plt.clim([0, max(amps), ])
     plt.xlabel("distance (µm)")
     plt.ylabel("distance (µm)")
     plt.title("Chip surface - response amplitude to 1 mV spike")
@@ -29,14 +27,11 @@ def plot_chip_surface_amps(stim_recording):
 
 def plot_chip_surface_clusters(stim_recording):
     cmap = matplotlib.colors.ListedColormap(np.random.rand(156,3))
-    xs=np.array(stim_recording.xs)[stim_recording.connected_pixels]
-    ys=np.array(stim_recording.ys)[stim_recording.connected_pixels]
-    clusters=np.array(stim_recording.clusters)[stim_recording.connected_pixels]
-    plt.scatter(xs,ys,c=clusters, marker='s', s=1, cmap=cmap)
+    plt.scatter(stim_recording.xs,stim_recording.ys,c=stim_recording.clusters, marker='s', s=1, cmap=cmap)
     plt.xlim([0, 3900])
     plt.ylim([0, 2100])
     plt.xlabel("distance (µm)")
     plt.ylabel("distance (µm)")
-    plt.title("Chip surface - " + str(len(stim_recording.connected_pixels)) + " connected pixels, " + str(len(np.unique(clusters))) + " clusters")
+    plt.title("Chip surface - " + str(len(stim_recording.channels)) + " connected pixels, " + str(len(np.unique(stim_recording.clusters))) + " clusters")
     plt.colorbar()
     plt.show()

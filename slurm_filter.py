@@ -27,12 +27,12 @@ import cusignal
 from chimpy.ramfile import RamFile
 
 MASTER_PROCESS = 0
-SHAPE_TAG = 71
+SETUP_TAG = 71
 AMPS_TAG = 72
 DATA_TAG = 73
 RESULT_TAG = 74
-DIE_TAG = 75
 TEST_TAG = 76
+DIE_SIGNAL = -1
 
 # Load filter parameters
 
@@ -110,9 +110,7 @@ if iproc == MASTER_PROCESS:
             if current_chunks[i] is None and sample_chunks[i].shape[0]>0:
                 current_chunks[i]=sample_chunks[i][0]
                 data_shape=(in_channel_chunks[i].shape[0], sample_chunk_size+current_chunks[i][1]-current_chunks[i][0])
-                print('sent stuff to ' + str(i))
-
-                comm.send(data_shape, dest=i+1, tag=SHAPE_TAG)
+                comm.send(data_shape, dest=i+1, tag=SETUP_TAG)
                 comm.send([channel_scales[channel] for channel in in_channel_chunks[i]], dest=i+1, tag=AMPS_TAG)
                 chunk=np.empty((in_channel_chunks[i].shape[0],sample_chunk_size+current_chunks[i][1]-current_chunks[i][0]))
                 if current_chunks[i][0]==0:
@@ -121,7 +119,7 @@ if iproc == MASTER_PROCESS:
                     chunk[:,:sample_chunk_size]=in_fid['sig'][in_channel_chunks[i],(current_chunks[i][0]-sample_chunk_size):current_chunks[i][0]]
                 sample_chunks[i]=np.delete(sample_chunks[i], (0), axis=0)
                 chunk[:,sample_chunk_size:]=in_fid['sig'][in_channel_chunks[i],current_chunks[i][0]:current_chunks[i][1]]
-                comm.isend(chunk, dest=i+1, tag=DATA_TAG)
+                comm.send(chunk, dest=i+1, tag=DATA_TAG)
                 
         #         Waiting for next ready chunk
         data=comm.recv(source=MPI.ANY_SOURCE, tag=RESULT_TAG, status=status)
@@ -137,21 +135,19 @@ if iproc == MASTER_PROCESS:
         print((1-n_remaining_chunks/n_total_chunks)*990, flush=True)
     
     #     After finishing the main loop, killing processes
-    for proc in range(nproc-1):
-        comm.send(-1, proc, tag=DIE_TAG)    
+    for proc in range(nproc-1):  
+        comm.send(DIE_SIGNAL, proc+1, tag=SETUP_TAG)
 #     Slave process main loop
 else: 
-    continue_working = True
-    while continue_working:
+    while True:
     #         Waiting for data from master process
-        comm.send(inode, dest=MASTER_PROCESS, tag=TEST_TAG)
-        chunk_shape=comm.recv(source=MASTER_PROCESS, tag=SHAPE_TAG)  
-        amps=comm.recv(source=MASTER_PROCESS, tag=AMPS_TAG)  
-        chunk=comm.recv(source=MASTER_PROCESS, tag=DATA_TAG, status=status)    
-        tag = status.Get_tag()
-        if tag == DIE_TAG:
-            continue_working = False
+        chunk_shape=comm.recv(source=MASTER_PROCESS, tag=SETUP_TAG)  
+        if chunk_shape==-1:
+            break
         else:
+            amps=comm.recv(source=MASTER_PROCESS, tag=AMPS_TAG)  
+            chunk=comm.recv(source=MASTER_PROCESS, tag=DATA_TAG, status=status)    
+            tag = status.Get_tag()           
             cusig=cupy.asarray(chunk, dtype=cupy.float32)
             cusig=cusig-cupy.mean(cusig)
             if cmr:
@@ -161,17 +157,14 @@ else:
             cusig=cusignal.sosfilt(sos,cusig)
             cusig=cupy.flipud(cusig)
             proc_channel_scales=cupy.asarray(chunk[:,-1], dtype=cupy.float32)[:,None]
-            cusig=cusig*proc_channel_scales
+#             cusig=cusig*proc_channel_scales
             result_array=cupy.asnumpy(cusig[:,-(chunk.shape[1]-sample_chunk_size):])
             comm.send(result_array, dest=MASTER_PROCESS, tag=RESULT_TAG)
 
 if iproc == MASTER_PROCESS:
-    if ram_copy:
-        in_ramfile.save()
-        out_ramfile.save()
-        del in_ramfile, out_ramfile
     in_fid.close()
     out_fid.close() 
+    if ram_copy:
+        out_ramfile.save()
+        del in_ramfile, out_ramfile
     print('DONE', flush=True)
-
-MPI.Finalize()

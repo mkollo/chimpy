@@ -9,8 +9,7 @@
 # For a copy, see <https://opensource.org/licenses/MIT>.                                 
 
 import os
-import subprocess
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, check_output
 import time
 from collections import deque
 import numpy as np
@@ -28,14 +27,16 @@ class Slurm:
         self.clean_up_out_files()
         self.generate_shell_script()
         self.err_hash=None
+        if self.n_tasks()>0:
+            self.kill_tasks()
         
     def clean_up_out_files(self):
-#         if os.path.isfile(self.job_name + ".out"):
-#             os.remove(self.job_name + ".out")
-#         if os.path.isfile(self.job_name + ".err"):
-#             os.remove(self.job_name + ".err")
-#         if os.path.isfile('params.json'):
-#             os.remove('params.json')
+        if os.path.isfile(self.job_name + ".out"):
+            os.remove(self.job_name + ".out")
+        if os.path.isfile(self.job_name + ".err"):
+            os.remove(self.job_name + ".err")
+        if os.path.isfile('params.json'):
+            os.remove('params.json')
         pass
 
     def generate_shell_script(self):
@@ -73,22 +74,28 @@ class Slurm:
             return output[4]=='R'
         else:
             return False
+    
+    def n_tasks(self):
+        p = Popen(['squeue','--partition=gpu','--user=kollom','--noheader'], stdout=PIPE)
+        return len(p.communicate()[0].decode('utf-8').split())
         
     def kill_tasks(self):
-        p = Popen(['squeue','--partition=gpu','--user=kollom','--noheader'], stdout=PIPE)
-        output=p.communicate()[0].decode('utf-8').split()
-        if len(output)>0:
-            subprocess.Popen(['scancel', output[0]])
+        p = Popen(['scancel','--partition=gpu','--user=kollom'], stdout=PIPE)
+        output=p.communicate()
+        n_gpu_tasks=self.n_tasks()
+#         while n_gpu_tasks>0:
+#             n_gpu_tasks=self.n_tasks()
+
 
     def get_progress(self):
         try:
-            lastline=subprocess.check_output(['tail', '-1', self.job_name + ".out"]).decode("utf-8")
+            lastline=check_output(['tail', '-1', self.job_name + ".out"]).decode("utf-8")
             if lastline=="DONE\n":
                 return 1000
             elif lastline=="":
                 return 0
             else:
-                return int(lastline)
+                return int(lastline)           
         except:
             return 0
 
@@ -111,34 +118,33 @@ class Slurm:
         
     def monitor(self, errors):
         pbar = tqdm(total=1000, ncols=100, position=0, leave=True)
+        pbar.set_description("Setting up jobs")
         progress=0
-        timeout=7
+        timeout=30
         start_time=time.time()
         tasks_running=False
-        while not tasks_running:
-            tasks_running=self.is_task_running()
-            if time.time()-start_time>timeout:
-                return False
-        while not(progress==1000):
+        while not(progress==1000):           
             time.sleep(0.1)
             progress=self.get_progress()
+            if progress>0:
+                pbar.set_description("Filtering")
             pbar.update(progress)
             pbar.refresh()
             if errors:
                 self.print_errors()
-        print("Finished all Slurm jobs")  
+        print("Finished Slurm jobs")  
 
     def run(self, params, errors=True):
         self.kill_tasks()
         time.sleep(1)
         with open('params.json', 'w') as fp:
             json.dump(params, fp)
-        process = subprocess.Popen(['sbatch', 'slurm.sh'])
+        process = Popen(['sbatch', 'slurm.sh'])
         if self.monitor(errors)==False:
             print("\33[91mERROR: Failed to start Slurm jobs\033[0m")
         self.clean_up_out_files()
         self.kill_tasks()
        
     def __del__(self):
-#         os.remove("slurm.sh")
+        os.remove("slurm.sh")
         pass

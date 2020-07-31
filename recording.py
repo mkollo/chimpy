@@ -22,13 +22,22 @@ class Recording:
     def __init__(self, filepath):
         self.filepath=filepath
         self.fid=h5py.File(filepath, "r")
-        self.map=self.fid["mapping"]
-        self.channels=[c[0] for c in self.map]
-        self.electrodes=[c[1] for c in self.map]
-        self.xs=[c[2] for c in self.map]
-        self.ys=[c[3] for c in self.map]
+        self.pixel_map=self.fid["mapping"]
+        self.channels=np.array([c[0] for c in self.pixel_map])
+        self.electrodes=np.array([c[1] for c in self.pixel_map])
+        self.xs=np.array([c[2] for c in self.pixel_map])
+        self.ys=np.array([c[3] for c in self.pixel_map])
+        print(self.channels.shape)
+        print(self.xs.shape)
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
+        
+    def remove_unconnected(self, connected_pixels):
+        self.good_channels=np.searchsorted(self.channels,connected_pixels)
+        self.channels=self.channels[self.good_channels]
+        self.electrodes=self.electrodes[self.good_channels]
+        self.xs=self.xs[self.good_channels]
+        self.ys=self.ys[self.good_channels]        
         
 class StimRecording(Recording):
     
@@ -37,13 +46,17 @@ class StimRecording(Recording):
         fid=h5py.File(self.filepath, "r")
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
         fid.close()
-        self.amps = preprocess.get_spike_amps(self.filt_traces[self.channels,:])
+        self.amps = preprocess.get_spike_amps(self.filt_traces)        
+        self.connected_pixels = np.setdiff1d(np.where((self.amps>50)), np.array(range(1024,1027)))
+        self.unconnected_pixels = np.setdiff1d(np.array(range(1024)),self.connected_pixels)
+        self.remove_unconnected(self.connected_pixels)
         self.clusters = self.cluster_pixels()
-        self.connected_pixels = np.where(self.amps>50)[0]
-        self.unconnected_pixels = np.where(self.amps<=50)[0]
         
     def cluster_pixels(self):   
         coords=np.transpose(np.vstack((self.xs,self.ys)))
         clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=35, linkage='single').fit(coords)
         return clustering.labels_
     
+    def remove_unconnected(self, connected_pixels):
+        super().remove_unconnected(self.connected_pixels)
+        self.amps=self.amps[self.good_channels]
