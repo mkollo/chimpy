@@ -27,8 +27,6 @@ class Recording:
         self.electrodes=np.array([c[1] for c in self.pixel_map])
         self.xs=np.array([c[2] for c in self.pixel_map])
         self.ys=np.array([c[3] for c in self.pixel_map])
-        print(self.channels.shape)
-        print(self.xs.shape)
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
         
@@ -53,7 +51,7 @@ class StimRecording(Recording):
         self.clusters = self.cluster_pixels()
         
     def cluster_pixels(self):   
-        coords=np.transpose(np.vstack((self.xs,self.ys)))
+        coords=np.transpose(np.vstack((self.xs,self.ys, self.amps)))
         clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=35, linkage='single').fit(coords)
         return clustering.labels_
     
