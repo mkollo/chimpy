@@ -8,10 +8,14 @@
 # This work is licensed under the terms of the MIT license.  
 # For a copy, see <https://opensource.org/licenses/MIT>.
 
+
+
 import datetime
 from tabulate import tabulate
 from scipy import histogram
 
+
+# NOTE: Beware, minimal implementation, only works with continuous recordings and Adc & Level channels with 'low' initial state!
 class Smr():
     
     def __init__(self, file_name):
@@ -41,10 +45,8 @@ class Smr():
         with open(self.file_name, 'rb') as self.fid:
             if self.channels[i].kind == 'Adc':
                 return self.channels[i].get_adc_data()
-            elif self.channels[i].kind == 'Level':
-                return self.channels[i].get_level_data()
-            elif self.channels[i].kind in ['Event-','Event+','Marker','TextMark']:
-                return self.channels[i].get_marker_data()            
+            elif self.channels[i].kind in ['Level']:
+                return self.channels[i].get_level_data()            
             else:
                 return None
         
@@ -124,7 +126,7 @@ class Channel():
         self.next_del_block = smr.read_long()
         self.first_block = smr.read_long()
         self.last_block = smr.read_long()
-        self.blocks = smr.read_short()
+        self.n_blocks = smr.read_short()
         self.n_extra = smr.read_short()
         self.pre_trig = smr.read_short()
         self.free0 = smr.read_short()
@@ -142,6 +144,7 @@ class Channel():
             self.offset = smr.read_float()
             self.units = smr.read_var_string(6)
             self.interleave = smr.read_long()
+            self.get_block_header()
         elif self.kind in ['RealMark', 'RealWave']:
             self.units = None
             self.min = smr.read_float()
@@ -153,33 +156,29 @@ class Channel():
             self.init_low = smr.read_byte()
             self.next_low = smr.read_byte()
         else:
-            self.units = None
-        if self.kind=='Adc':
-            self.get_block_header()
-            
-    def get_block_header(self):
-        if self.kind is not None:
-            self.block_headers = np.zeros([6, self.blocks], int)
-            self.smr.fid.seek(self.first_block)
-            self.smr.read_long()
+            self.units = None        
+    
+    def get_block_header(self):        
+        self.block_headers = np.zeros([6, self.n_blocks], int)
+        self.smr.fid.seek(self.first_block)
+        self.smr.read_long()
+        pointer = self.smr.read_long()
+        self.block_pointers = []
+        self.block_next_pointers = []
+        self.block_start_times = []
+        self.block_end_times = []
+        self.block_channels = []
+        self.block_items = []
+        for i in range(1,self.n_blocks):
+            self.smr.fid.seek(pointer)                
+            self.block_pointers.append(self.smr.read_long())
             pointer = self.smr.read_long()
-            self.block_pointers = []
-            self.block_next_pointers = []
-            self.block_start_times = []
-            self.block_end_times = []
-            self.block_channels = []
-            self.block_items = []
-            for i in range(1,self.blocks):
-                self.smr.fid.seek(pointer)
-                self.block_pointers.append(self.smr.read_long())
-                pointer = self.smr.read_long()
-                self.block_next_pointers.append(pointer)                
-                self.block_start_times.append(self.smr.read_long())
-                self.block_end_times.append(self.smr.read_long())        
-                self.block_channels.append(self.smr.read_short())
-                self.block_items.append(self.smr.read_short()) 
-
-                
+            self.block_next_pointers.append(pointer)                
+            self.block_start_times.append(self.smr.read_long())
+            self.block_end_times.append(self.smr.read_long())        
+            self.block_channels.append(self.smr.read_short())
+            self.block_items.append(self.smr.read_short()) 
+         
     def get_adc_data(self): # only works with continuous data!                        
         data  =  np.zeros(sum(self.block_items), np.short)
         n  =  0
@@ -194,11 +193,12 @@ class Channel():
         return np.vstack((times,data.astype('double') * self.scale / 6553.6 + self.offset))
 
     def get_level_data(self):
-        self.smr.fid.seek(self.first_block)
-        print(self.smr.fid.read(100).hex())
-        
-
+        self.smr.fid.seek(self.first_block)        
         pass
     
-    def get_marker_data(self):
-        pass
+    def get_level_data(self):
+        self.smr.fid.seek(self.first_block+18)
+        n_items=self.smr.read_short()
+        self.smr.fid.seek(self.first_block+20)
+        timings=(self.smr.read_longs(n_items)*self.smr.us_per_time * self.smr.dtime_base).reshape(-1, 2)
+        return np.append(timings,(timings[:,1]-timings[:,0])[None,].T,1)n
