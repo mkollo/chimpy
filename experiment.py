@@ -16,7 +16,7 @@ from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters
 
 class Experiment:
     
-    def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, brain_selection=-1):
+    def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, brain_selection=-1, smr_selection=-1):
         self.base_dir = "/camp/home/kollom/working/mkollo/CHIME/"
         self.paths={}
         self.selections={}
@@ -24,11 +24,16 @@ class Experiment:
         self.explore_paths(experiment_folder)
         self.select_rec(stim_selection,'stim')
         self.select_rec(noise_selection,'noise')
+        self.select_rec(smr_selection,'smr')
         self.unselect_rec('brain')
         print("Stim  recordings:")
         self.print_rec_list('stim')
         print("Noise recordings:")
         self.print_rec_list('noise')
+        print("Spike2 recordings:")
+        self.print_rec_list('smr')
+        print("Brain recordings:")
+        self.print_rec_list('brain')
         print("Loading stim recording...")
         self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']])
         self.connected_pixels=self.recordings['stim'].connected_pixels
@@ -38,8 +43,7 @@ class Experiment:
         print("Calculating pixel amps...")
         plot_chip_surface_amps(self.recordings['stim'])
         plot_chip_surface_clusters(self.recordings['stim'])
-        print("Brain recordings:")
-        self.print_rec_list('brain')
+       
         
     def select_brain_recording(self, selection):
         self.select_rec(selection, 'brain')
@@ -69,6 +73,8 @@ class Experiment:
         self.paths['noise'].sort(key=os.path.getmtime)
         self.paths['brain']=glob.glob(self.base_dir+experiment_folder+"/brain/*.raw.h5")
         self.paths['brain'].sort(key=os.path.getmtime)
+        self.paths['smr']=glob.glob(self.base_dir+experiment_folder+"/*.smr")
+        self.paths['smr'].sort(key=os.path.getmtime)
         
     def print_rec_list(self, rec_type):
         for i in range(len(self.paths[rec_type])):
