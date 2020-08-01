@@ -7,15 +7,15 @@
 # 
 # This work is licensed under the terms of the MIT license.  
 # For a copy, see <https://opensource.org/licenses/MIT>.
+                                 
 
-
+# IMPORTANT NOTICE: Minimal implementation, only works with continuous .smr files. Only reads Adc channels and Level channels with low initial state!
 
 import datetime
 from tabulate import tabulate
 from scipy import histogram
+import numpy as np
 
-
-# NOTE: Beware, minimal implementation, only works with continuous recordings and Adc & Level channels with 'low' initial state!
 class Smr():
     
     def __init__(self, file_name):
@@ -178,7 +178,8 @@ class Channel():
             self.block_end_times.append(self.smr.read_long())        
             self.block_channels.append(self.smr.read_short())
             self.block_items.append(self.smr.read_short()) 
-         
+
+                
     def get_adc_data(self): # only works with continuous data!                        
         data  =  np.zeros(sum(self.block_items), np.short)
         n  =  0
@@ -201,4 +202,5 @@ class Channel():
         n_items=self.smr.read_short()
         self.smr.fid.seek(self.first_block+20)
         timings=(self.smr.read_longs(n_items)*self.smr.us_per_time * self.smr.dtime_base).reshape(-1, 2)
-        return np.append(timings,(timings[:,1]-timings[:,0])[None,].T,1)n
+        return np.append(timings,(timings[:,1]-timings[:,0])[None,].T,1)
+     
