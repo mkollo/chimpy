@@ -55,6 +55,7 @@ class Slurm:
         else:
             file.write("#SBATCH --partition=cpu\n")
         file.write("#SBATCH --exclusive\n")
+        file.write("#SBATCH --exclude=gpu003, gpu025\n")
         file.write("#SBATCH --output=" + self.job_name + ".out\n")
         file.write("#SBATCH --error=" + self.job_name + ".err\n")
         file.write("\n")

@@ -22,10 +22,10 @@ class Experiment:
         self.selections={}
         self.recordings={}
         self.explore_paths(experiment_folder)
-        self.select_rec(stim_selection,'stim')
-        self.select_rec(noise_selection,'noise')
-        self.select_rec(pid_selection,'pid')
-        self.select_rec(smr_selection,'smr')
+        self.select_rec('stim', stim_selection)
+        self.select_rec('noise', noise_selection)
+        self.select_rec('pid', pid_selection)
+        self.select_rec('smr', smr_selection)
         self.unselect_rec('brain')
         print("Stim  recordings:")
         self.print_rec_list('stim')
@@ -52,14 +52,16 @@ class Experiment:
 
 
     def select_brain_recording(self, selection):
-        self.select_rec(selection, 'brain')
+        self.select_rec('brain', selection)
         self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']])
         self.print_rec_list('brain')
         
     def unselect_rec(self, rec_type):
         self.selections[rec_type]=-1
         
-    def select_rec(self, selection, rec_type):
+    def select_rec(self, rec_type='brain', selection=-1):
+        print(rec_type)
+        print(selection)
         if selection<0:
             self.selections[rec_type]=len(self.paths[rec_type])-1
         else:

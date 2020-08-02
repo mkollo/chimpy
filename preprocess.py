@@ -71,27 +71,24 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_s
         chunk[:,:overlap]=chunk[:,-overlap:]
     return output
 
-def filter_experiment_slurm(exp, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
-    #     Optionally save file into a tmpfs partition for processing
-    stim_recording=exp.recordings['stim']
-    brain_recording=exp.recordings['brain']
+def filter_experiment_slurm(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
+    #     Optionally save file into a tmpfs partition for processing   
     channels=stim_recording.channels
     amps=stim_recording.amps
     scales=1000/amps
-    in_filepath=brain_recording.filepath
-    out_filepath=brain_recording.filtered_filepath
+    in_filepath=in_recording.filepath
+    out_filepath=in_recording.filtered_filepath
     params={
         'sample_chunk_size':sample_chunk_size,
         'channels':list(map(int, channels)),
         'n_samples':n_samples,
-        'cmr':cmr,
         'order':order,
         'low_cutoff':low_cutoff,
         'high_cutoff':high_cutoff,
         'scales':list(map(float,scales)),
         'in_filepath': in_filepath,
         'out_filepath': out_filepath,
-        'connected_pixels': list(map(int, exp.connected_pixels)),
+        'connected_pixels': list(map(int, stim_recording.connected_pixels)),
         'ram_copy': ram_copy
     }
     slurm = Slurm("slurm_filter", 12, gpu=True)

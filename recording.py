@@ -30,6 +30,16 @@ class Recording:
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
     
+    def filtered_data(self, from_sample, to_sample):
+        self.fid=h5py.File(self.filtered_filepath, "r")
+        data=self.fid['sig'][:,from_sample:to_sample][()]
+        self.fid.close()
+        return(data)
+    
+    def filter(self, stim_recording, low_cutoff=100, high_cutoff=9000, order=3, cmr=True, n_samples=-1, iron='local'):
+        if iron=='local':
+            preprocess.filter_experiment_local(self, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, n_samples=-1) 
+
     def parse_mapping(self):
         self.channels=np.array([c[0] for c in self.pixel_map])
         self.electrodes=np.array([c[1] for c in self.pixel_map])

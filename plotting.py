@@ -16,10 +16,13 @@ from chimpy.preprocess import power_spectrum
 import matplotlib.pyplot as plt
 from sciplotlib import style as spstyle
 
-def create_figure(x, y):
-    matplotlib.rcParams['figure.figsize'] = [6*x, 3*y]
-    with plt.style.context(spstyle.get_style('nature')):
-        fig, axs = plt.subplots(y,x, figsize=(6*x,3*y))
+def create_figure(x, y, nature_style=False):
+    matplotlib.rcParams['figure.figsize'] = [7*x, 4*y]
+    if nature_style:
+        with plt.style.context(spstyle.get_style('nature')):
+            fig, axs = plt.subplots(y,x, figsize=(6*x,3*y))
+    else:
+            fig, axs = plt.subplots(y,x, figsize=(6*x,3*y))
     return fig, axs
     
 def plot_chip_surface_amps(stim_recording, fig, ax):
@@ -56,10 +59,10 @@ def plot_chip_surface_noises(noise_recording, fig, ax):
     scatter.set_clim([0, max(noises), ])
 
 def plot_noise_histogram(noise_recording, fig, ax):    
-    ax.hist(noise_recording.noises, 30)
+    hist=ax.hist(noise_recording.noises, 25, edgecolor='black', linewidth=1)
     ax.set_xlabel("RMS noise (µV)")
     ax.set_ylabel("pixels")
-    plt.tight_layout()
+    plt.tight_layout(pad=1)
     
 def plot_power_spectrum(data1, data2=None):
     spectrum1=power_spectrum(data1)

@@ -42,7 +42,6 @@ with open('params.json') as json_file:
 sample_chunk_size=params['sample_chunk_size']
 channels=np.array(params['channels'])
 n_samples=params['n_samples']
-cmr=params['cmr']
 order=params['order']
 low_cutoff=params['low_cutoff']
 high_cutoff=params['high_cutoff']
@@ -53,7 +52,7 @@ connected_pixels=params['connected_pixels']
 ram_copy=params['ram_copy']
 
 # Create dictionary of channel scales
-channel_scales=dict(zip(channels[connected_pixels],scales[connected_pixels]))
+channel_scales=dict(zip(channels,scales))
 n_channels=len(connected_pixels)
 
 # # Initialize MPI
@@ -81,7 +80,7 @@ if iproc == MASTER_PROCESS:
 
     #     Create output file
     out_fid=h5py.File(out_filepath, 'w')
-    out_fid['mapping']=in_fid['mapping'][connected_pixels]
+    out_fid['mapping']=in_fid['mapping'][connected_in_mapping]
     in_fid.copy('/message_0', out_fid)
     in_fid.copy('/proc0', out_fid)
     in_fid.copy('/settings', out_fid)
@@ -150,8 +149,6 @@ else:
             tag = status.Get_tag()           
             cusig=cupy.asarray(chunk, dtype=cupy.float32)
             cusig=cusig-cupy.mean(cusig)
-            if cmr:
-                cusig=cusig-cuda_median(cusig,0) 
             cusig=cusignal.sosfilt(sos,cusig)
             cusig=cupy.flipud(cusig)
             cusig=cusignal.sosfilt(sos,cusig)
