@@ -97,22 +97,20 @@ def filter_experiment_slurm(exp, low_cutoff, high_cutoff, order=3, cmr=False, sa
     slurm = Slurm("slurm_filter", 12, gpu=True)
     slurm.run(params)
 
-def filter_experiment_local(exp, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):
-    stim_recording=exp.recordings['stim']
-    brain_recording=exp.recordings['brain']
+def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):    
     channels=stim_recording.channels
     amps=stim_recording.amps
     scales=1000/amps
     n_channels=stim_recording.channels.shape[0]
 #     Optionally save file into a tmpfs partition for processing
     if ram_copy:
-        in_ramfile=RamFile(brain_recording.filepath, 'r')
+        in_ramfile=RamFile(in_recording.filepath, 'r')
         in_filepath=in_ramfile.ram_filepath
-        out_ramfile=RamFile(brain_recording.filtered_filepath, 'w')
+        out_ramfile=RamFile(in_recording.filtered_filepath, 'w')
         out_filepath=out_ramfile.ram_filepath
     else:
-        in_filepath=brain_recording.filepath
-        out_filepath=brain_recording.filtered_filepath
+        in_filepath=in_recording.filepath
+        out_filepath=in_recording.filtered_filepath
     in_fid=h5py.File(in_filepath, 'r')
 #     Create output file
     out_fid=h5py.File(out_filepath, 'w')

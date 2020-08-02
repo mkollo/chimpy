@@ -11,8 +11,8 @@
 import glob
 import os
 import chimpy
-from chimpy.recording import Recording, StimRecording
-from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters
+from chimpy.recording import Recording, StimRecording, NoiseRecording
+from chimpy.plotting import *
 
 class Experiment:
     
@@ -30,7 +30,7 @@ class Experiment:
         print("Stim  recordings:")
         self.print_rec_list('stim')
         print("Noise recordings:")
-        self.print_rec_list('noise')
+        self.print_rec_list('noise')        
         print("PID recordings:")
         self.print_rec_list('pid')
         print("Spike2 recordings:")
@@ -42,12 +42,15 @@ class Experiment:
         self.connected_pixels=self.recordings['stim'].connected_pixels
         self.unconnected_pixels=self.recordings['stim'].unconnected_pixels
         print("Loading noise recording...")
-        self.recordings['noise']=Recording(self.paths['noise'][self.selections['noise']])
+        self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['stim'])        
         print("Calculating pixel amps...")
-        plot_chip_surface_amps(self.recordings['stim'])
-        plot_chip_surface_clusters(self.recordings['stim'])
-       
-        
+        fig, axs = create_figure(2,2)
+        plot_chip_surface_amps(self.recordings['stim'], fig, axs[0][0])
+        plot_chip_surface_clusters(self.recordings['stim'], fig, axs[0][1])
+        plot_noise_histogram(self.recordings['noise'], fig, axs[1][0])
+        plot_chip_surface_noises(self.recordings['noise'], fig, axs[1][1])
+
+
     def select_brain_recording(self, selection):
         self.select_rec(selection, 'brain')
         self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']])

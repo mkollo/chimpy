@@ -25,13 +25,16 @@ class Recording:
         self.pixel_map=self.fid["mapping"]
         if 'bits' in self.fid.keys():
             self.bits=self.fid["bits"]
-        self.channels=np.array([c[0] for c in self.pixel_map])
-        self.electrodes=np.array([c[1] for c in self.pixel_map])
-        self.xs=np.array([c[2] for c in self.pixel_map])
-        self.ys=np.array([c[3] for c in self.pixel_map])
+        self.parse_mapping()
         self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
+    
+    def parse_mapping(self):
+        self.channels=np.array([c[0] for c in self.pixel_map])
+        self.electrodes=np.array([c[1] for c in self.pixel_map])
+        self.xs=np.array([c[2] for c in self.pixel_map])
+        self.ys=np.array([c[3] for c in self.pixel_map])  
         
     def remove_unconnected(self):
         connected=np.searchsorted(self.channels,self.connected_pixels)
@@ -80,4 +83,17 @@ class StimRecording(Recording):
         coords=np.transpose(np.vstack((self.xs,self.ys, self.amps)))
         clustering = AgglomerativeClustering(n_clusters=None, distance_threshold=35, linkage='single').fit(coords)
         return clustering.labels_
+
+class NoiseRecording(Recording):
+    
+    def __init__(self, filepath, stim_recording):
+        Recording.__init__(self,filepath)
+        fid=h5py.File(self.filepath, "r")
+        preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = True, n_samples = 20000)
+        fid=h5py.File(self.filtered_filepath, "r")
+        self.noise_traces=fid['sig'][()]
+        self.noises=np.std(self.noise_traces,axis=1)
+        self.pixel_map=fid["mapping"]
+        self.parse_mapping()
+        fid.close()        
     
