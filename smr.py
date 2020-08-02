@@ -40,13 +40,17 @@ class Smr():
                 table.append([ch.channel_no, ch.kind, ch.title, ch.comment, ch.units])
         print(tabulate(table,["No", "Kind", "Title", "Comment", "Unit"],tablefmt = "fancy_grid"))                
     
-    def get_channel_data(self, chan):        
+    def channel_time_step(self, chan):
+        i=[ch.channel_no for ch in self.channels].index(chan)
+        return self.channels[i].time_step()
+    
+    def channel_data(self, chan):        
         i=[ch.channel_no for ch in self.channels].index(chan)
         with open(self.file_name, 'rb') as self.fid:
             if self.channels[i].kind == 'Adc':
-                return self.channels[i].get_adc_data()
+                return self.channels[i].adc_data()
             elif self.channels[i].kind in ['Level']:
-                return self.channels[i].get_level_data()            
+                return self.channels[i].level_data()            
             else:
                 return None
         
@@ -144,7 +148,7 @@ class Channel():
             self.offset = smr.read_float()
             self.units = smr.read_var_string(6)
             self.interleave = smr.read_long()
-            self.get_block_header()
+            self.block_header()
         elif self.kind in ['RealMark', 'RealWave']:
             self.units = None
             self.min = smr.read_float()
@@ -158,7 +162,7 @@ class Channel():
         else:
             self.units = None        
     
-    def get_block_header(self):        
+    def block_header(self):        
         self.block_headers = np.zeros([6, self.n_blocks], int)
         self.smr.fid.seek(self.first_block)
         self.smr.read_long()
@@ -178,9 +182,11 @@ class Channel():
             self.block_end_times.append(self.smr.read_long())        
             self.block_channels.append(self.smr.read_short())
             self.block_items.append(self.smr.read_short()) 
-
-                
-    def get_adc_data(self): # only works with continuous data!                        
+            
+    def time_step(self):
+        return self.chan_div*self.smr.us_per_time*self.smr.dtime_base
+            
+    def adc_data(self): # only works with continuous data!                        
         data  =  np.zeros(sum(self.block_items), np.short)
         n  =  0
         for i in range(len(self.block_pointers)):
@@ -192,12 +198,8 @@ class Channel():
         np.set_printoptions(precision = 3,suppress = True)                
         times=np.linspace(0,self.max_chan_time,num=data.shape[0])/100000    
         return np.vstack((times,data.astype('double') * self.scale / 6553.6 + self.offset))
-
-    def get_level_data(self):
-        self.smr.fid.seek(self.first_block)        
-        pass
     
-    def get_level_data(self):
+    def level_data(self):
         self.smr.fid.seek(self.first_block+18)
         n_items=self.smr.read_short()
         self.smr.fid.seek(self.first_block+20)

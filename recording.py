@@ -23,10 +23,13 @@ class Recording:
         self.filepath=filepath
         self.fid=h5py.File(filepath, "r")
         self.pixel_map=self.fid["mapping"]
+        if 'bits' in self.fid.keys():
+            self.bits=self.fid["bits"]
         self.channels=np.array([c[0] for c in self.pixel_map])
         self.electrodes=np.array([c[1] for c in self.pixel_map])
         self.xs=np.array([c[2] for c in self.pixel_map])
         self.ys=np.array([c[3] for c in self.pixel_map])
+        self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
         
@@ -37,6 +40,27 @@ class Recording:
         self.electrodes=self.electrodes[connected]
         self.xs=self.xs[connected]
         self.ys=self.ys[connected]
+        
+    def ttls(self):
+        self.fid=h5py.File(self.filepath, "r")
+        ttls = {k: [] for k in range(33)}
+        for i in range(len(self.fid["bits"])-1):
+            ttl=self.fid["bits"][i]
+            next_ttl=self.fid["bits"][i+1]
+            start=ttl[0]
+            stop=np.nan
+            if next_ttl[1]==0:
+                stop=next_ttl[0]
+            ttls[ttl[1]].append([start, stop])
+        ttls.pop(0, None)
+        cleaned_ttls={}
+        for k, t in ttls.items():
+            if len(t)>0:
+                t=(np.array(t)-self.first_frame)/20000
+                t=np.append(t,np.round((t[:,1]-t[:,0])[None,].T*10-1),1)
+                cleaned_ttls[k]=t
+        self.fid.close()
+        return cleaned_ttls
         
 class StimRecording(Recording):
     
