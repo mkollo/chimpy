@@ -13,6 +13,7 @@ import os
 import chimpy
 from chimpy.recording import Recording, StimRecording, NoiseRecording
 from chimpy.plotting import *
+from PIL import Image
 
 class Experiment:
     
@@ -35,6 +36,8 @@ class Experiment:
         self.print_rec_list('pid')
         print("Spike2 recordings:")
         self.print_rec_list('smr')
+        self.ct_shape=np.array(Image.open(self.paths['ct'][0])).shape + tuple([len(self.paths['ct'])])
+        print("CT found ===== shape(W,L,H) = " + str(self.ct_shape))
         print("Brain recordings:")
         self.print_rec_list('brain')
         print("Loading stim recording...")
@@ -60,8 +63,6 @@ class Experiment:
         self.selections[rec_type]=-1
         
     def select_rec(self, rec_type='brain', selection=-1):
-        print(rec_type)
-        print(selection)
         if selection<0:
             self.selections[rec_type]=len(self.paths[rec_type])-1
         else:
@@ -83,6 +84,8 @@ class Experiment:
         self.paths['brain'].sort(key=os.path.getmtime)
         self.paths['smr']=glob.glob(self.base_dir+experiment_folder+"/*[!_PID].smr")
         self.paths['smr'].sort(key=os.path.getmtime)
+        self.paths['ct']=glob.glob(self.base_dir+experiment_folder+"/ct/*.tiff")
+        self.paths['ct'].sort()
         self.paths['pid']=glob.glob(self.base_dir+experiment_folder+"/*_PID.smr")
         self.paths['pid'].sort(key=os.path.getmtime)
         
