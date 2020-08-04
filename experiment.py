@@ -10,14 +10,13 @@
                                  
 import glob
 import os
-import chimpy
+import numpy as np
 from chimpy.recording import Recording, StimRecording, NoiseRecording
-from chimpy.plotting import *
 from PIL import Image
 
 class Experiment:
     
-    def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1):
+    def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False):
         self.base_dir = "/camp/home/kollom/working/mkollo/CHIME/"
         self.paths={}
         self.selections={}
@@ -47,11 +46,13 @@ class Experiment:
         print("Loading noise recording...")
         self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['stim'])        
         print("Calculating pixel amps...")
-        fig, axs = create_figure(2,2)
-        plot_chip_surface_amps(self.recordings['stim'], fig, axs[0][0])
-        plot_chip_surface_clusters(self.recordings['stim'], fig, axs[0][1])
-        plot_noise_histogram(self.recordings['noise'], fig, axs[1][0])
-        plot_chip_surface_noises(self.recordings['noise'], fig, axs[1][1])
+        if not no_graphics:
+            from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters, plot_noise_histogram, plot_chip_surface_noises, create_figure
+            fig, axs = create_figure(2,2)
+            plot_chip_surface_amps(self.recordings['stim'], fig, axs[0][0])
+            plot_chip_surface_clusters(self.recordings['stim'], fig, axs[0][1])
+            plot_noise_histogram(self.recordings['noise'], fig, axs[1][0])
+            plot_chip_surface_noises(self.recordings['noise'], fig, axs[1][1])
 
 
     def select_brain_recording(self, selection):

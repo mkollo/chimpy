@@ -74,3 +74,7 @@ def plot_power_spectrum(data1, data2=None):
     plt.xlabel('Frequency (Hz)')
     
 
+def plot_amplitude_vs_noise(stim_recording, noise_recording, fig, ax):    
+        ax.scatter(stim_recording.amps,noise_recording.noises)
+        ax.set_xlabel("Amplitudes (pixel value)")
+        ax.set_ylabel("RMS noise (µV)")

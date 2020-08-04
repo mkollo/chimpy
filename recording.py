@@ -16,6 +16,7 @@ import os
 from . import preprocess
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
+from sklearn import manifold
 
 class Recording:
     
@@ -28,13 +29,7 @@ class Recording:
         self.parse_mapping()
         self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
-        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)
-    
-    def filtered_data(self, from_sample, to_sample):
-        self.fid=h5py.File(self.filtered_filepath, "r")
-        data=self.fid['sig'][:,from_sample:to_sample][()]
-        self.fid.close()
-        return(data)
+        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)    
     
     def filter(self, stim_recording, low_cutoff=100, high_cutoff=9000, order=3, cmr=True, n_samples=-1, iron='local'):
         if iron=='local':
@@ -74,7 +69,57 @@ class Recording:
                 cleaned_ttls[k]=t
         self.fid.close()
         return cleaned_ttls
-        
+    
+    def filtered_data(self, from_sample=-1, to_sample=-1):
+        self.filtfid=h5py.File(self.filtered_filepath, "r")
+        if from_sample==-1:
+            from_sample=0
+        if to_sample==-1:
+            to_sample=self.filtfid['sig'].shape[1]
+        data=self.filtfid['sig'][:,from_sample:to_sample][()]
+        self.filtfid.close()
+        return(data)
+    
+    def elstim_times(self, from_sample=-1, to_sample=-1):
+        self.filtfid=h5py.File(self.filtered_filepath, "r")
+        minsig=np.min(self.filtfid['sig'],axis=0)[None,:]
+        if from_sample==-1:
+            from_sample=0
+        if to_sample==-1:
+            to_sample=self.filtfid['sig'].shape[1]
+        elstim_times=preprocess.get_spike_crossings(minsig, 1)
+        elstim_times=elstim_times[np.insert(np.isclose(np.diff(elstim_times),10000, atol=500),0,False)]        
+        self.filtfid.close()
+        elstim_times=elstim_times[elstim_times>from_sample]
+        elstim_times=elstim_times[elstim_times<to_sample]
+        elstim_times=elstim_times
+        group_indices=np.where(np.diff(elstim_times)>12000)[0]+1
+        return np.split(elstim_times, group_indices)
+    
+    def distance_matrix(self):
+        filtdata=self.filtered_data()
+        eltimes=self.elstim_times()
+        stim_response_map=np.array([np.mean(filtdata[:,eltimes[x]],axis=1) for x in range(len(eltimes))])
+        stim_pixels=np.argmax(np.abs(stim_response_map[:,:]),axis=1)
+        distance_matrix=np.full((stim_response_map.shape[1],stim_response_map.shape[1]),np.nan)
+        for stim_type in np.unique(stim_pixels):
+            stim_trials=np.where(stim_pixels==stim_type)
+            distance_matrix[stim_type,:]=np.mean(1/np.abs(stim_response_map[stim_trials,:]),axis=1)[0,:]*5000
+
+        distance_matrix[distance_matrix>5000]=5000
+        distance_matrix[distance_matrix<-5000]=np.nan
+        filled_rows=np.where(np.all(np.isnan(distance_matrix),axis=1))[0]
+        distance_matrix[filled_rows,:]=distance_matrix[:,filled_rows].T
+        mean_distance=np.nanmedian(distance_matrix)
+        distance_matrix[np.isnan(distance_matrix)]=mean_distance
+        distance_matrix=(distance_matrix + distance_matrix.T)/2
+        return distance_matrix
+    
+    def estimate_coordinates(self, dimensions=2):
+        mds = manifold.MDS(n_components=dimensions, dissimilarity="precomputed", random_state=6)
+        results = mds.fit(self.distance_matrix())
+        return results.embedding_
+    
 class StimRecording(Recording):
     
     def __init__(self, filepath, connected_threshold=50):
@@ -83,7 +128,7 @@ class StimRecording(Recording):
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
         fid.close()
         self.amps = preprocess.get_spike_amps(self.filt_traces)        
-        self.connected_pixels = np.where(self.amps>50)[0]
+        self.connected_pixels = np.where(self.amps>25)[0]
         self.unconnected_pixels = np.setdiff1d(np.array(range(1028)),self.connected_pixels)
         self.remove_unconnected()
         self.amps = self.amps[self.connected_pixels]

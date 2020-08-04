@@ -154,9 +154,9 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         out_ramfile.save()
         del in_ramfile, out_ramfile
 
-def get_spike_crossings(s):
+def get_spike_crossings(s, threshold=7):
     mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));
-    spike_threshold=-cupy.std(mean_stim_trace)*7;
+    spike_threshold=-cupy.std(mean_stim_trace)*threshold;
     crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2];
     return crossings[np.diff(crossings, prepend=0)>1]
     
@@ -164,7 +164,7 @@ def get_spike_amps(s):
     sig=cupy.asarray(s[:1024,:20000])
     peaks=cusignal.peak_finding.peak_finding.argrelmin(sig, order=20, axis=1)
     mean_std=cupy.mean(cupy.std(sig,axis=1))
-    significant_peaks=sig[peaks[0],peaks[1]]<(-5*mean_std)
+    significant_peaks=sig[peaks[0],peaks[1]]<(-10*mean_std)
     amps=np.median(cupy.asnumpy(sig[:,peaks[1][significant_peaks]]*-1),axis=1)
     return amps
 
