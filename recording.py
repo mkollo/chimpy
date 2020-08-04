@@ -30,7 +30,9 @@ class Recording:
         self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)    
-    
+        self.distance_matrix=None
+        self.estimated_coordinates=None
+        
     def filter(self, stim_recording, low_cutoff=100, high_cutoff=9000, order=3, cmr=True, n_samples=-1, iron='local'):
         if iron=='local':
             preprocess.filter_experiment_local(self, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, n_samples=-1) 
@@ -96,30 +98,52 @@ class Recording:
         group_indices=np.where(np.diff(elstim_times)>12000)[0]+1
         return np.split(elstim_times, group_indices)
     
-    def distance_matrix(self):
-        filtdata=self.filtered_data()
-        eltimes=self.elstim_times()
-        stim_response_map=np.array([np.mean(filtdata[:,eltimes[x]],axis=1) for x in range(len(eltimes))])
-        stim_pixels=np.argmax(np.abs(stim_response_map[:,:]),axis=1)
-        distance_matrix=np.full((stim_response_map.shape[1],stim_response_map.shape[1]),np.nan)
-        for stim_type in np.unique(stim_pixels):
-            stim_trials=np.where(stim_pixels==stim_type)
-            distance_matrix[stim_type,:]=np.mean(1/np.abs(stim_response_map[stim_trials,:]),axis=1)[0,:]*5000
+    def calc_distance_matrix(self):
+        if self.distance_matrix==None:
+            filtdata=self.filtered_data()
+            eltimes=self.elstim_times()
+            stim_response_map=np.array([np.mean(filtdata[:,eltimes[x]],axis=1) for x in range(len(eltimes))])
+            self.stim_response_map=stim_response_map
+            stim_pixels=np.argmax(np.abs(stim_response_map[:,:]),axis=1)
+            distance_matrix=np.full((stim_response_map.shape[1],stim_response_map.shape[1]),np.nan)
+            for stim_type in np.unique(stim_pixels):
+                stim_trials=np.where(stim_pixels==stim_type)
+                distance_matrix[stim_type,:]=np.mean(1/np.abs(stim_response_map[stim_trials,:]),axis=1)[0,:]*5000
+            distance_matrix[distance_matrix>5000]=5000
+            distance_matrix[distance_matrix<-5000]=np.nan
+            filled_rows=np.where(np.all(np.isnan(distance_matrix),axis=1))[0]
+            distance_matrix[filled_rows,:]=distance_matrix[:,filled_rows].T
+            mean_distance=np.nanmedian(distance_matrix)
+            distance_matrix[np.isnan(distance_matrix)]=mean_distance
+            distance_matrix=(distance_matrix + distance_matrix.T)/2        
+            self.distance_matrix=distance_matrix
+            return distance_matrix
 
-        distance_matrix[distance_matrix>5000]=5000
-        distance_matrix[distance_matrix<-5000]=np.nan
-        filled_rows=np.where(np.all(np.isnan(distance_matrix),axis=1))[0]
-        distance_matrix[filled_rows,:]=distance_matrix[:,filled_rows].T
-        mean_distance=np.nanmedian(distance_matrix)
-        distance_matrix[np.isnan(distance_matrix)]=mean_distance
-        distance_matrix=(distance_matrix + distance_matrix.T)/2
-        return distance_matrix
-    
-    def estimate_coordinates(self, dimensions=2):
-        mds = manifold.MDS(n_components=dimensions, dissimilarity="precomputed", random_state=6)
-        results = mds.fit(self.distance_matrix())
-        return results.embedding_
-    
+    def calc_estimate_coordinates(self, dimensions=2):
+        if self.estimated_coordinates==None:
+            mds = manifold.MDS(n_components=dimensions, dissimilarity="precomputed", random_state=6)
+            results = mds.fit(self.distance_matrix)
+            estimated_coordinates=results.embedding_
+            self.estimated_coordinates=estimated_coordinates
+            return estimated_coordinates
+        
+
+    def write_probe_file(filename, coords, radius):
+        with open(filename, "w") as fid:
+            fid.write("total_nb_channels = "+str(coords.shape[0])+"\n")
+            fid.write("radius = "+str(radius)+"\n")        
+            fid.write("channel_groups = {\n")
+            fid.write("\t1: {\n")
+            fid.write("\t\t'channels': list(range("+srt(coords.shape[0])+")),\n")
+            fid.write("\t\t'graph': [],\n")
+            fid.write("\t\t'geometry': {\n")
+            for i in range(coords.shape[0]):
+                fid.write("\t\t\t"+str(i)+":  [  "+', '.join([str(c) for c in coords[i,:]])+"],\n")
+            fid.write("\t\t}\n")
+            fid.write("\t}\n")
+            fid.write("}\n")
+
+
 class StimRecording(Recording):
     
     def __init__(self, filepath, connected_threshold=50):

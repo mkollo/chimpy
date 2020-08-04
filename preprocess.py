@@ -113,7 +113,10 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
     out_fid=h5py.File(out_filepath, 'w')
     if n_samples==-1:
         n_samples=in_fid['sig'].shape[1]
-    out_fid['mapping']=in_fid['mapping'][stim_recording.connected_in_mapping]
+    out_mapping=in_fid['mapping'][stim_recording.connected_in_mapping]
+    for i, m in enumerate(out_mapping):
+        m[0]=i    
+    out_fid['mapping']=out_mapping
     in_fid.copy('/message_0', out_fid)
     in_fid.copy('/proc0', out_fid)
     in_fid.copy('/settings', out_fid)

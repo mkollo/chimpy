@@ -18,6 +18,7 @@ class Experiment:
     
     def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False):
         self.base_dir = "/camp/home/kollom/working/mkollo/CHIME/"
+        self.expreiment_path=self.base_dir+experiment_folder
         self.paths={}
         self.selections={}
         self.recordings={}
@@ -68,13 +69,6 @@ class Experiment:
             self.selections[rec_type]=len(self.paths[rec_type])-1
         else:
             self.selections[rec_type]=selection
-            
-    def select_brain_rec(self, selection):
-        if selection<0:
-            self.selections['brain']=len(self.paths[rec_type])-1
-        else:
-            self.selections['brain']=selection
-        self.print_rec_list('brain')
             
     def explore_paths(self, experiment_folder):
         self.paths['stim']=glob.glob(self.base_dir+experiment_folder+"/stim/*.raw.h5")
