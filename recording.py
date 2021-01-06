@@ -9,6 +9,8 @@
 # For a copy, see <https://opensource.org/licenses/MIT>.                               
 
 import importlib
+
+from numpy.lib.npyio import save
 import h5py
 import re
 import os
@@ -20,8 +22,12 @@ from sklearn import manifold
 
 class Recording:
     
-    def __init__(self, filepath):
+    def __init__(self, filepath, *, savepath=None):
         self.filepath=filepath
+        if savepath is None:
+            self.savepath=filepath
+        else:
+            self.savepath = os.path.join(savepath, os.path.split(filepath)[1])
         self.fid=h5py.File(filepath, "r")
         self.pixel_map=self.fid["mapping"]
         if 'bits' in self.fid.keys():
@@ -29,7 +35,7 @@ class Recording:
         self.parse_mapping()
         self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
-        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.filepath)    
+        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.savepath)    
         self.distance_matrix=None
         self.estimated_coordinates=None
         
@@ -53,7 +59,7 @@ class Recording:
         
     def ttls(self):
         self.fid=h5py.File(self.filepath, "r")
-        ttls = {k: [] for k in range(33)}
+        ttls = {}
         for i in range(len(self.fid["bits"])-1):
             ttl=self.fid["bits"][i]
             next_ttl=self.fid["bits"][i+1]
@@ -61,7 +67,10 @@ class Recording:
             stop=np.nan
             if next_ttl[1]==0:
                 stop=next_ttl[0]
-            ttls[ttl[1]].append([start, stop])
+            if ttl[1] not in ttls:
+                ttls[ttl[1]] = [[start, stop]]
+            else:
+                ttls[ttl[1]].append([start, stop])
         ttls.pop(0, None)
         cleaned_ttls={}
         for k, t in ttls.items():
@@ -146,13 +155,13 @@ class Recording:
 
 class StimRecording(Recording):
     
-    def __init__(self, filepath, connected_threshold=50):
-        Recording.__init__(self,filepath)
+    def __init__(self, filepath, *, savepath=None, connected_threshold=25):
+        Recording.__init__(self,filepath, savepath=savepath)
         fid=h5py.File(self.filepath, "r")
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
         fid.close()
         self.amps = preprocess.get_spike_amps(self.filt_traces)        
-        self.connected_pixels = np.where(self.amps>25)[0]
+        self.connected_pixels = np.where(self.amps>connected_threshold)[0]
         self.unconnected_pixels = np.setdiff1d(np.array(range(1028)),self.connected_pixels)
         self.remove_unconnected()
         self.amps = self.amps[self.connected_pixels]
@@ -165,10 +174,10 @@ class StimRecording(Recording):
 
 class NoiseRecording(Recording):
     
-    def __init__(self, filepath, stim_recording):
-        Recording.__init__(self,filepath)
+    def __init__(self, filepath, stim_recording, *, savepath=None):
+        Recording.__init__(self,filepath, savepath=savepath)
         fid=h5py.File(self.filepath, "r")
-        preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = True, n_samples = 20000)
+        preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = False, n_samples = 20000)
         fid=h5py.File(self.filtered_filepath, "r")
         self.noise_traces=fid['sig'][()]
         self.noises=np.std(self.noise_traces,axis=1)
