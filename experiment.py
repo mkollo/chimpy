@@ -16,18 +16,21 @@ from PIL import Image
 
 class Experiment:
     
-    def __init__(self, experiment_folder, stim_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False):
-        self.base_dir = "/camp/home/kollom/working/mkollo/CHIME/"
-        self.expreiment_path=self.base_dir+experiment_folder
+    def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False):
+        self.experiment_path=experiment_path
+        self.savepath=savepath
         self.paths={}
         self.selections={}
         self.recordings={}
-        self.explore_paths(experiment_folder)
+        self.explore_paths(self.experiment_path)
         self.select_rec('stim', stim_selection)
         self.select_rec('noise', noise_selection)
         self.select_rec('pid', pid_selection)
         self.select_rec('smr', smr_selection)
+        self.select_rec('conn', conn_selection)
         self.unselect_rec('brain')
+        print('Conn recordings')
+        self.print_rec_list('conn')
         print("Stim  recordings:")
         self.print_rec_list('stim')
         print("Noise recordings:")
@@ -36,29 +39,31 @@ class Experiment:
         self.print_rec_list('pid')
         print("Spike2 recordings:")
         self.print_rec_list('smr')
-        self.ct_shape=np.array(Image.open(self.paths['ct'][0])).shape + tuple([len(self.paths['ct'])])
-        print("CT found ===== shape(W,L,H) = " + str(self.ct_shape))
+        # self.ct_shape=np.array(Image.open(self.paths['ct'][0])).shape + tuple([len(self.paths['ct'])])
+        # print("CT found ===== shape(W,L,H) = " + str(self.ct_shape))
         print("Brain recordings:")
         self.print_rec_list('brain')
-        print("Loading stim recording...")
-        self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']])
-        self.connected_pixels=self.recordings['stim'].connected_pixels
-        self.unconnected_pixels=self.recordings['stim'].unconnected_pixels
+        # print("Loading stim recording...")
+        # self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']], savepath=savepath)
+        print('loading conn recording...')
+        self.recordings['conn']=StimRecording(self.paths['conn'][self.selections['conn']], savepath=savepath)
+        self.connected_pixels=self.recordings['conn'].connected_pixels
+        self.unconnected_pixels=self.recordings['conn'].unconnected_pixels
         print("Loading noise recording...")
-        self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['stim'])        
+        self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['conn'], savepath=savepath)        
         print("Calculating pixel amps...")
         if not no_graphics:
             from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters, plot_noise_histogram, plot_chip_surface_noises, create_figure
             fig, axs = create_figure(2,2)
-            plot_chip_surface_amps(self.recordings['stim'], fig, axs[0][0])
-            plot_chip_surface_clusters(self.recordings['stim'], fig, axs[0][1])
+            plot_chip_surface_amps(self.recordings['conn'], fig, axs[0][0])
+            plot_chip_surface_clusters(self.recordings['conn'], fig, axs[0][1])
             plot_noise_histogram(self.recordings['noise'], fig, axs[1][0])
             plot_chip_surface_noises(self.recordings['noise'], fig, axs[1][1])
 
 
     def select_brain_recording(self, selection):
         self.select_rec('brain', selection)
-        self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']])
+        self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']], savepath=self.savepath)
         self.print_rec_list('brain')
         
     def unselect_rec(self, rec_type):
@@ -71,17 +76,19 @@ class Experiment:
             self.selections[rec_type]=selection
             
     def explore_paths(self, experiment_folder):
-        self.paths['stim']=glob.glob(self.base_dir+experiment_folder+"/stim/*.raw.h5")
+        self.paths['conn']=glob.glob(self.experiment_path+"/conn/*.raw.h5")
+        self.paths['conn'].sort(key=os.path.getmtime)
+        self.paths['stim']=glob.glob(self.experiment_path+"/stim/*.raw.h5")
         self.paths['stim'].sort(key=os.path.getmtime)
-        self.paths['noise']=glob.glob(self.base_dir+experiment_folder+"/noise/*.raw.h5")
+        self.paths['noise']=glob.glob(self.experiment_path+"/noise/*.raw.h5")
         self.paths['noise'].sort(key=os.path.getmtime)
-        self.paths['brain']=glob.glob(self.base_dir+experiment_folder+"/brain/*.raw.h5")
+        self.paths['brain']=glob.glob(self.experiment_path+"/brain/*.raw.h5")
         self.paths['brain'].sort(key=os.path.getmtime)
-        self.paths['smr']=glob.glob(self.base_dir+experiment_folder+"/*[!_PID].smr")
+        self.paths['smr']=glob.glob(self.experiment_path+"/*[!_PID].smr*")
         self.paths['smr'].sort(key=os.path.getmtime)
-        self.paths['ct']=glob.glob(self.base_dir+experiment_folder+"/ct/*.tiff")
+        self.paths['ct']=glob.glob(self.experiment_path+"/ct/*.tiff")
         self.paths['ct'].sort()
-        self.paths['pid']=glob.glob(self.base_dir+experiment_folder+"/*_PID.smr")
+        self.paths['pid']=glob.glob(self.experiment_path+"/*_PID.smr")
         self.paths['pid'].sort(key=os.path.getmtime)
         
     def print_rec_list(self, rec_type):
