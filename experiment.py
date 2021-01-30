@@ -16,13 +16,15 @@ from PIL import Image
 
 class Experiment:
     
-    def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False):
+    def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False, switched_recordings=[None]):
         self.experiment_path=experiment_path
         self.savepath=savepath
         self.paths={}
         self.selections={}
         self.recordings={}
         self.explore_paths(self.experiment_path)
+        self.switch_recording_group(switched_recordings)
+
         self.select_rec('stim', stim_selection)
         self.select_rec('noise', noise_selection)
         self.select_rec('pid', pid_selection)
@@ -99,3 +101,16 @@ class Experiment:
     def print_file_item(self, selected, n, filepath):
         file_size=os.stat(filepath).st_size/(1024*1024*1024.0)
         print('[{0}] {2:3} {1:5.1f}GB ––– {3}'.format(' ' if selected==False else 'x', file_size, str(n), os.path.basename(filepath)))
+
+    def switch_recording_group(self, switches):
+        for switch in switches:
+            if switch is None:
+                print('No recording switches')
+                break
+            else:
+                initial_group, new_group, position = switch
+                assert initial_group in self.paths and new_group in self.paths
+                exp_path = self.paths[initial_group][position]
+                del self.paths[initial_group][position]
+                self.paths[new_group].append(exp_path)
+                print('Switched recording %s from %s to %s' % (os.path.basename(exp_path), initial_group, new_group))
