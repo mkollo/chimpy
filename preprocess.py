@@ -130,6 +130,7 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
 #     Create chunks
     n_sample_chunks=n_samples/sample_chunk_size
     sample_chunks=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_chunk_size,n_samples))
+    out_fid.create_dataset('saturations', (n_channels, len(sample_chunks-1)), dtype='int32')
     overlap=sample_chunk_size
     chunk=np.zeros((n_channels,sample_chunk_size+overlap))
     chunk[:,:overlap]=np.array([in_fid['sig'][channels,0],]*overlap).transpose()
@@ -138,6 +139,7 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         idx_to=sample_chunks[i+1]
         chunk=chunk[:,:(idx_to-idx_from+overlap)]
         chunk[:,overlap:]=in_fid['sig'][channels,idx_from:idx_to]
+        out_fid['saturations'][:, i] = np.count_nonzero(((0==chunk[:, overlap:]) | (chunk[:, overlap:] == 4095)), axis=1)
         cusig=cupy.asarray(chunk, dtype=cupy.float32)
         cusig=cusig-cupy.mean(cusig)
         if cmr:
@@ -158,9 +160,9 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         del in_ramfile, out_ramfile
 
 def get_spike_crossings(s, threshold=7):
-    mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));
-    spike_threshold=-cupy.std(mean_stim_trace)*threshold;
-    crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2];
+    mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0))
+    spike_threshold=-cupy.std(mean_stim_trace)*threshold
+    crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2]
     return crossings[np.diff(crossings, prepend=0)>1]
     
 def get_spike_amps(s):
