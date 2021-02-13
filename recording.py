@@ -14,7 +14,7 @@ from numpy.lib.npyio import save
 import h5py
 import re
 import os
-
+from scipy.stats import normaltest
 from . import preprocess
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
@@ -30,12 +30,21 @@ class Recording:
             self.savepath = os.path.join(savepath, os.path.split(filepath)[1])
         self.fid=h5py.File(filepath, "r")
         self.pixel_map=self.fid["mapping"]
+        self.sample_length = self.fid['sig'].shape[1]
+        if 'saturations' in self.fid.keys():
+            self.saturations = np.sum(self.fid['saturations'], axis=1)
+            #self.remove_saturation()
+            self.satured_removed=True
+        else:
+            self.satured_removed=False
         if 'bits' in self.fid.keys():
             self.bits=self.fid["bits"]
         self.parse_mapping()
         self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
-        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.savepath)    
+        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.savepath)
+        # if os.path.isfile(self.filtered_filepath):
+        #     self.remove_broken_chans()
         self.distance_matrix=None
         self.estimated_coordinates=None
         
@@ -50,12 +59,15 @@ class Recording:
         self.ys=np.array([c[3] for c in self.pixel_map])  
         
     def remove_unconnected(self):
-        connected=np.searchsorted(self.channels,self.connected_pixels)
-        self.connected_in_mapping=connected
-        self.channels=self.channels[connected]
-        self.electrodes=self.electrodes[connected]
-        self.xs=self.xs[connected]
-        self.ys=self.ys[connected]
+#        connected=self.channels[self.connected_pixels]
+        # self.connected_in_mapping=connected
+        self.channels, chan_index, connected_pixel_index = np.intersect1d(self.channels, self.connected_pixels, return_indices=True)
+        #self.channels=self.channels[self.connected_pixels]
+        self.connected_in_mapping = chan_index
+        self.electrodes=self.electrodes[chan_index]
+        self.xs=self.xs[chan_index]
+        self.ys=self.ys[chan_index]
+
         
     def ttls(self):
         self.fid=h5py.File(self.filepath, "r")
@@ -107,10 +119,11 @@ class Recording:
         group_indices=np.where(np.diff(elstim_times)>12000)[0]+1
         return np.split(elstim_times, group_indices)
     
-    def calc_distance_matrix(self):
+    def calc_distance_matrix(self, eltimes=None):
         if self.distance_matrix==None:
-            filtdata=self.filtered_data()
-            eltimes=self.elstim_times()
+            filtdata = self.filtered_data()
+            if eltimes is None:
+                eltimes=self.elstim_times()
             stim_response_map=np.array([np.mean(filtdata[:,eltimes[x]],axis=1) for x in range(len(eltimes))])
             self.stim_response_map=stim_response_map
             stim_pixels=np.argmax(np.abs(stim_response_map[:,:]),axis=1)
@@ -127,6 +140,17 @@ class Recording:
             distance_matrix=(distance_matrix + distance_matrix.T)/2        
             self.distance_matrix=distance_matrix
             return distance_matrix
+        
+    def estim_distance_matrix(self, *, from_sample=0, to_sample=20000*60*5, dist_coef=143, dist_power=1/3):
+        if self.estimated_coordinates is None:
+            filtdata = self.filter_data(from_sample=from_sample, to_sample=to_sample)
+            corrs = np.correlate(filtdata)
+            corrs[corrs<0] == 1e-10
+            distances=dist_coef/corrs**(dist_power) - dist_coef
+            self.distance_matrix=distances
+            return distances
+    
+
 
     def calc_estimate_coordinates(self, dimensions=2):
         if self.estimated_coordinates==None:
@@ -135,6 +159,23 @@ class Recording:
             estimated_coordinates=results.embedding_
             self.estimated_coordinates=estimated_coordinates
             return estimated_coordinates
+    
+    def remove_saturation(self, tol=0.01):
+        sat_frac = self.saturations/self.sample_length > tol
+        self.channels = self.channels[sat_frac]
+        self.connected_in_mapping = self.connected_in_mapping[sat_frac]
+        self.electrodes=self.electrodes[sat_frac]
+        self.xs=self.xs[sat_frac]
+        self.ys=self.ys[sat_frac]       
+    
+    def remove_broken_chans(self, from_sample=0, to_sample=65536):
+        data = self.filtered_data(from_sample=from_sample, to_sample=to_sample)[self.channels]
+        non_broken_chans = np.invert(np.isnan(normaltest(data, axis=1)[1]))
+        self.channels = self.channels[non_broken_chans]
+        self.connected_in_mapping = self.connected_in_mapping[non_broken_chans]
+        self.xs = self.xs[non_broken_chans]
+        self.electrodes = self.electrodes[non_broken_chans]
+        self.ys = self.ys[non_broken_chans]
         
 
     def write_probe_file(filename, coords, radius):
@@ -151,11 +192,12 @@ class Recording:
             fid.write("\t\t}\n")
             fid.write("\t}\n")
             fid.write("}\n")
+    
 
 
 class StimRecording(Recording):
     
-    def __init__(self, filepath, *, savepath=None, connected_threshold=25):
+    def __init__(self, filepath, *, savepath=None, connected_threshold=10):
         Recording.__init__(self,filepath, savepath=savepath)
         fid=h5py.File(self.filepath, "r")
         self.filt_traces = preprocess.filter_traces(fid["sig"], 100, 9000, cmr=False, n_samples=20000)
@@ -165,7 +207,7 @@ class StimRecording(Recording):
         self.unconnected_pixels = np.setdiff1d(np.array(range(1028)),self.connected_pixels)
         self.remove_unconnected()
         self.amps = self.amps[self.connected_pixels]
-        self.clusters = self.cluster_pixels()        
+        #self.clusters = self.cluster_pixels()        
         
     def cluster_pixels(self):   
         coords=np.transpose(np.vstack((self.xs,self.ys, self.amps)))
@@ -177,7 +219,8 @@ class NoiseRecording(Recording):
     def __init__(self, filepath, stim_recording, *, savepath=None):
         Recording.__init__(self,filepath, savepath=savepath)
         fid=h5py.File(self.filepath, "r")
-        preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = False, n_samples = 20000)
+        if self.filtered_data is None:
+            preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = False, n_samples = 20000)
         fid=h5py.File(self.filtered_filepath, "r")
         self.noise_traces=fid['sig'][()]
         self.noises=np.std(self.noise_traces,axis=1)
