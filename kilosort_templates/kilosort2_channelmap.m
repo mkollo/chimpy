@@ -1,7 +1,7 @@
 %  create a channel map file
 
 Nchannels = {nchan}; % number of channels
-connected = true(Nchannels, 1);
+connected = logical({connected});
 chanMap   = 1:Nchannels;
 chanMap0ind = chanMap - 1;
 
