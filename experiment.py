@@ -15,8 +15,27 @@ from chimpy.recording import Recording, StimRecording, NoiseRecording
 from PIL import Image
 
 class Experiment:
+    '''
+    A series of chimpy recordings associated with a single experimental day
+    '''
+
     
-    def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, brain_selection=-1, smr_selection=-1, no_graphics=False, switched_recordings=[None]):
+    def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, smr_selection=-1, no_graphics=False, switched_recordings=[None], ignore_recordings=[None]):
+        '''
+        Arguments:
+        experiment_path - The path to the head folder containing the folders for brain, conn etc.
+
+        Optional arguments:
+        savepath - If the location for new additional files created is different to the path that the original experimental files are containted, default None
+        stim_selection - Index of the stim recordings to select for use, default -1
+        conn_selection - Index of the conn recordings to select for use, default -1
+        noise_selection - Index of the noise recordings to select for use, default -1
+        pid_selection - Index of the pid recording (if present) to select for use, default -1
+        smr_selection - Index of the spike2 recording to use
+        no_graphics - If a graphical output should be shown outlying noise/connected pixels, default False
+        switched_recordings - If any recordings need to be moved between groups, is passed sets of 3 values: intial group, target group, and inital index
+        ignore_recordings - If any recording groups should be ignored, use at own risk.
+        '''
         self.experiment_path=experiment_path
         self.savepath=savepath
         self.paths={}
@@ -48,11 +67,17 @@ class Experiment:
         # print("Loading stim recording...")
         # self.recordings['stim']=StimRecording(self.paths['stim'][self.selections['stim']], savepath=savepath)
         print('loading conn recording...')
-        self.recordings['conn']=StimRecording(self.paths['conn'][self.selections['conn']], savepath=savepath)
-        self.connected_pixels=self.recordings['conn'].connected_pixels
-        self.unconnected_pixels=self.recordings['conn'].unconnected_pixels
+        if 'conn' not in ignore_recordings:
+            self.recordings['conn']=StimRecording(self.paths['conn'][self.selections['conn']], savepath=savepath)
+            self.connected_pixels=self.recordings['conn'].connected_pixels
+            self.unconnected_pixels=self.recordings['conn'].unconnected_pixels
+        else:
+            print('Ignored conn recording, WARNING: This will almost inevitably cause crashes/bugs')
         print("Loading noise recording...")
-        self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['conn'], savepath=savepath)        
+        if 'noise' not in ignore_recordings:
+            self.recordings['noise']=NoiseRecording(self.paths['noise'][self.selections['noise']], self.recordings['conn'], savepath=savepath)
+        else:
+            print('Ignored noise recording')        
         print("Calculating pixel amps...")
         if not no_graphics:
             from chimpy.plotting import plot_chip_surface_amps, plot_chip_surface_clusters, plot_noise_histogram, plot_chip_surface_noises, create_figure
