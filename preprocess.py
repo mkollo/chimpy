@@ -131,6 +131,7 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
     n_sample_chunks=n_samples/sample_chunk_size
     sample_chunks=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_chunk_size,n_samples))
     out_fid.create_dataset('saturations', (n_channels, len(sample_chunks-1)), dtype='int32')
+    out_fid.create_dataset('first_frame', shape=(1,), data=in_fid["sig"][1027,0]<<16 | in_fid["sig"][1026,0])
     overlap=sample_chunk_size
     chunk=np.zeros((n_channels,sample_chunk_size+overlap))
     chunk[:,:overlap]=np.array([in_fid['sig'][channels,0],]*overlap).transpose()

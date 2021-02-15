@@ -19,7 +19,9 @@ from . import preprocess
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn import manifold
-
+from tqdm import trange
+import cusignal
+import cupy as cp
 class Recording:
     
     def __init__(self, filepath, *, savepath=None):
@@ -28,23 +30,26 @@ class Recording:
             self.savepath=filepath
         else:
             self.savepath = os.path.join(savepath, os.path.split(filepath)[1])
-        self.fid=h5py.File(filepath, "r")
+        self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.savepath)
+        if os.path.isfile(self.filtered_filepath):
+            self.filtered = True
+            self.fid = h5py.File(self.filtered_filepath, 'r')
+            self.first_frame = self.fid['first_frame'][0]
+        else:
+            self.filtered=False
+            self.fid=h5py.File(filepath, "r")
+            self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
+
         self.pixel_map=self.fid["mapping"]
         self.sample_length = self.fid['sig'].shape[1]
         if 'saturations' in self.fid.keys():
             self.saturations = np.sum(self.fid['saturations'], axis=1)
             #self.remove_saturation()
-            self.satured_removed=True
-        else:
-            self.satured_removed=False
         if 'bits' in self.fid.keys():
             self.bits=self.fid["bits"]
         self.parse_mapping()
-        self.first_frame=self.fid["sig"][1027,0]<<16 | self.fid["sig"][1026,0]
         self.fid.close()
         self.filtered_filepath=re.sub(r"(?:\.raw\.h5){1,}$",".filt.h5",self.savepath)
-        # if os.path.isfile(self.filtered_filepath):
-        #     self.remove_broken_chans()
         self.distance_matrix=None
         self.estimated_coordinates=None
         
@@ -99,7 +104,7 @@ class Recording:
             from_sample=0
         if to_sample==-1:
             to_sample=self.filtfid['sig'].shape[1]
-        data=self.filtfid['sig'][:,from_sample:to_sample][()]
+        data=self.filtfid['sig'][self.channels,from_sample:to_sample]
         self.filtfid.close()
         return(data)
     
@@ -160,22 +165,22 @@ class Recording:
             self.estimated_coordinates=estimated_coordinates
             return estimated_coordinates
     
-    def remove_saturation(self, tol=0.01):
-        sat_frac = self.saturations/self.sample_length > tol
+    def remove_saturated(self, tol=0.01):
+        sat_frac = self.saturations/self.sample_length < tol
         self.channels = self.channels[sat_frac]
-        self.connected_in_mapping = self.connected_in_mapping[sat_frac]
         self.electrodes=self.electrodes[sat_frac]
         self.xs=self.xs[sat_frac]
-        self.ys=self.ys[sat_frac]       
+        self.ys=self.ys[sat_frac]
+        print('%d channels with saturation, removed %d channels with over %f saturation' % (len(np.where(self.saturations > 0)[0]), len(self.saturations) - len(self.channels), tol))       
     
-    def remove_broken_chans(self, from_sample=0, to_sample=65536):
-        data = self.filtered_data(from_sample=from_sample, to_sample=to_sample)[self.channels]
+    def remove_broken(self, from_sample=0, to_sample=65536):
+        data = self.filtered_data(from_sample=from_sample, to_sample=to_sample)
         non_broken_chans = np.invert(np.isnan(normaltest(data, axis=1)[1]))
         self.channels = self.channels[non_broken_chans]
-        self.connected_in_mapping = self.connected_in_mapping[non_broken_chans]
         self.xs = self.xs[non_broken_chans]
         self.electrodes = self.electrodes[non_broken_chans]
         self.ys = self.ys[non_broken_chans]
+        print('removed %d channels showing abnormal distributions' % (len(data)-len(self.channels)))
         
 
     def write_probe_file(filename, coords, radius):
@@ -193,6 +198,23 @@ class Recording:
             fid.write("\t}\n")
             fid.write("}\n")
     
+    def find_tcs(self, chunk_size=65536, overlap=1000, order=40, threshold=4, return_stds=False):
+        all_spikes = []
+        spike_amps = []
+        stds = np.std(self.filtered_data(from_sample=0, to_sample=chunk_size))
+        for i in trange(round(self.sample_length/chunk_size)):
+            chunk = self.filtered_data(from_sample=i*chunk_size, to_sample=(i+1)*chunk_size+overlap)
+            chunk_spikes = cusignal.peak_finding.peak_finding.argrelmin(chunk, order=order, axis=1)
+            spike_vals = chunk[chunk_spikes[0].get(), chunk_spikes[1].get()]
+            sig_spikes = np.where(spike_vals <= - threshold*stds[chunk_spikes[0].get()])[0]
+            all_spikes[0].append(chunk_spikes[0][sig_spikes])
+            all_spikes[1].append(chunk_spikes[1][sig_spikes]+i*chunk_size)
+            spike_amps.append(spike_vals[sig_spikes])
+        all_spikes = cp.array([cp.concatenate(all_spikes[0]), cp.concatenate(all_spikes[1])])
+        if return_stds:
+            return all_spikes, spike_amps, stds
+        else:
+            return all_spikes, spike_amps
 
 
 class StimRecording(Recording):
@@ -219,7 +241,7 @@ class NoiseRecording(Recording):
     def __init__(self, filepath, stim_recording, *, savepath=None):
         Recording.__init__(self,filepath, savepath=savepath)
         fid=h5py.File(self.filepath, "r")
-        if self.filtered_data is None:
+        if not os.path.isfile(self.filtered_filepath):
             preprocess.filter_experiment_local(self, stim_recording, 100, 9000, ram_copy = False, n_samples = 20000)
         fid=h5py.File(self.filtered_filepath, "r")
         self.noise_traces=fid['sig'][()]

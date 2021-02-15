@@ -91,7 +91,13 @@ class Experiment:
     def select_brain_recording(self, selection):
         self.select_rec('brain', selection)
         self.recordings['brain']=Recording(self.paths['brain'][self.selections['brain']], savepath=self.savepath)
+        self.recordings['brain'].connected_pixels = self.recordings['conn'].connected_pixels
+        self.recordings['brain'].unconnected_pixels = self.recordings['conn'].unconnected_pixels
+        #self.recordings['brain'].parse_mapping()
         self.print_rec_list('brain')
+        if self.recordings['brain'].filtered:
+            self.recordings['brain'].remove_broken()
+            self.recordings['brain'].remove_saturated()
         
     def unselect_rec(self, rec_type):
         self.selections[rec_type]=-1
