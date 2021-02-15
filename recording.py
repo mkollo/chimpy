@@ -148,10 +148,11 @@ class Recording:
         
     def estim_distance_matrix(self, *, from_sample=0, to_sample=20000*60*5, dist_coef=143, dist_power=1/3):
         if self.estimated_coordinates is None:
-            filtdata = self.filter_data(from_sample=from_sample, to_sample=to_sample)
-            corrs = np.correlate(filtdata)
+            filtdata = self.filtered_data(from_sample=from_sample, to_sample=to_sample)
+            corrs = cp.corrcoef(filtdata)
             corrs[corrs<0] == 1e-10
             distances=dist_coef/corrs**(dist_power) - dist_coef
+            distances = distances.get()
             self.distance_matrix=distances
             return distances
     
