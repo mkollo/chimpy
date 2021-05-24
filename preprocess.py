@@ -64,9 +64,9 @@ def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_s
         if cmr:
             cusig=cusig-cuda_median(cusig,0) 
         cusig=cusignal.sosfilt(sos,cusig)
-        cusig=cupy.flipud(cusig)
+        cusig=cupy.fliplr(cusig)
         cusig=cusignal.sosfilt(sos,cusig)
-        cusig=cupy.flipud(cusig)
+        cusig=cupy.fliplr(cusig)
         output[:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
         chunk[:,:overlap]=chunk[:,-overlap:]
     return output
@@ -146,9 +146,9 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         if cmr:
             cusig=cusig-cuda_median(cusig,0) 
         cusig=cusignal.sosfilt(sos,cusig)
-        cusig=cupy.flipud(cusig)
+        cusig=cupy.fliplr(cusig)
         cusig=cusignal.sosfilt(sos,cusig)
-        cusig=cupy.flipud(cusig)
+        cusig=cupy.fliplr(cusig)
         cusig=cusig*cupy.asarray(scales, dtype=cupy.float32)[:,None]
         out_fid["sig"][:,idx_from:idx_to]=cupy.asnumpy(cusig[:,overlap:])
         chunk[:,:overlap]=chunk[:,-overlap:]
