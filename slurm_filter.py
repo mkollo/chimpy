@@ -21,6 +21,8 @@ import os
 import json
 
 from scipy.signal import butter
+import sys
+sys.path.append('/home/camp/warnert')
 import cupy
 import cusignal
 
