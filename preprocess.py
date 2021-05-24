@@ -94,7 +94,7 @@ def filter_experiment_slurm(in_recording, stim_recording, low_cutoff, high_cutof
     slurm = Slurm("slurm_filter", 12, gpu=True)
     slurm.run(params)
 
-def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False):    
+def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False, whiten=False):    
     channels=stim_recording.channels
     amps=stim_recording.amps
     scales=1000/amps
@@ -130,6 +130,8 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
 #     Create chunks
     n_sample_chunks=n_samples/sample_chunk_size
     sample_chunks=np.hstack((np.arange(n_sample_chunks, dtype=int)*sample_chunk_size,n_samples))
+    out_fid.create_dataset('saturations', (n_channels, len(sample_chunks-1)), dtype='int32')
+    out_fid.create_dataset('first_frame', shape=(1,), data=in_fid["sig"][1027,0]<<16 | in_fid["sig"][1026,0])
     overlap=sample_chunk_size
     chunk=np.zeros((n_channels,sample_chunk_size+overlap))
     chunk[:,:overlap]=np.array([in_fid['sig'][channels,0],]*overlap).transpose()
@@ -138,6 +140,7 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         idx_to=sample_chunks[i+1]
         chunk=chunk[:,:(idx_to-idx_from+overlap)]
         chunk[:,overlap:]=in_fid['sig'][channels,idx_from:idx_to]
+        out_fid['saturations'][:, i] = np.count_nonzero(((0==chunk[:, overlap:]) | (chunk[:, overlap:] == 4095)), axis=1)
         cusig=cupy.asarray(chunk, dtype=cupy.float32)
         cusig=cusig-cupy.mean(cusig)
         if cmr:
@@ -158,18 +161,23 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         del in_ramfile, out_ramfile
 
 def get_spike_crossings(s, threshold=7):
-    mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0));
-    spike_threshold=-cupy.std(mean_stim_trace)*threshold;
-    crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2];
+    mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0))
+    spike_threshold=-cupy.std(mean_stim_trace)*threshold
+    crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2]
     return crossings[np.diff(crossings, prepend=0)>1]
     
-def get_spike_amps(s):
+def get_spike_amps(s, return_counts = False):
     sig=cupy.asarray(s[:1024,:20000])
     peaks=cusignal.peak_finding.peak_finding.argrelmin(sig, order=20, axis=1)
     mean_std=cupy.mean(cupy.std(sig,axis=1))
     significant_peaks=sig[peaks[0],peaks[1]]<(-10*mean_std)
     amps=np.median(cupy.asnumpy(sig[:,peaks[1][significant_peaks]]*-1),axis=1)
-    return amps
+    if return_counts:
+        sig_peak_chans = peaks[0][significant_peaks]
+        chan_count = np.array([len(sig_peak_chans[sig_peak_chans == i]) for i in range(1024)])
+        return amps, chan_count
+    else:
+        return amps
 
 def power_spectrum(data):
     fourier_transform = np.fft.rfft(data)
