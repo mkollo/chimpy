@@ -11,7 +11,14 @@
 import numpy as np
 from pathlib import Path
 import os
+from tqdm import tqdm
+import dask
+from chimpy.dask_tasks import check_progress, dask_tcs, dask_wf
 import sys
+# sys.path.append('/home/camp/warnert/spikeextractors')
+# sys.path.append('/home/camp/warnert/spikesorters')
+# import spikesorters as ss
+# import spikeextractors as se
 np.set_printoptions(linewidth=np.inf)
 np.set_printoptions(threshold=np.inf)
 
@@ -107,4 +114,58 @@ def write_kilosort_files(experiment, **kwargs):
 
 
 
+# def run_ms4(recording_path, out_path, **params):
+#     chimpy_rec = se.CHIMERecordingExtractor(recording_path)
+#     chimpy_rec.read_chimpy_chan_params()
+#     default_params = ss.Mountainsort4Sorter.default_params()
+#     for i in params:
+#         default_params[i] = params[i]
+#     ms4_out = ss.run_mountainsort4(recording=chimpy_rec, output_folder=out_path, verbose=True, **params)
+#     return ms4_out
 
+
+def find_tcs(recording, chunk_size, client, order=40, threshold=4, whitening=False, return_stds=True):    
+    try:
+        stds = np.std(recording.filtered_data(from_sample=0, to_sample=chunk_size), axis=1)
+
+        chunk_times = np.arange(0, recording.sample_length, chunk_size)
+        tcs = [dask.delayed(dask_tcs)(recording.filtered_filepath, chunk_times[i], chunk_times[i+1], recording.channels, stds, order=order, threshold=threshold, whitening=whitening) for i in range(len(chunk_times)-1)]
+        tcs_out = client.compute(tcs)
+
+        check_progress(tcs_out)
+
+        tc_times, tc_chans, tc_amps = [], [], []
+        for i in tcs_out:
+            tc_times.append(i.result()[0])
+            tc_chans.append(i.result()[1])
+            tc_amps.append(i.result()[2])
+
+        tc_times = np.concatenate(tc_times)
+        tc_chans = np.concatenate(tc_chans)
+        tc_amps = np.concatenate(tc_amps)
+
+        chan_tcs = [tc_chans[tc_times == i] for i in recording.channels]
+        chan_amps = [tc_amps[tc_times.get()  == i] for i in recording.channels]
+
+        if return_stds:
+            return chan_tcs, chan_amps, stds
+        else:
+            return chan_tcs, chan_amps
+    except KeyboardInterrupt:
+        print('Cancelling jobs')
+        [i.cancel() for i in tqdm(tcs)]
+        
+
+
+def find_wfs(recording, spike_times, client, window=30, whitened=False):
+    try:
+        wfs_delayed = [dask.delayed(dask_wf)(recording.filtered_filepath, i, recording.channels, whitened=whitened) for i in spike_times]
+
+        wfs_out = client.compute(wfs_delayed)
+
+        check_progress(wfs_out)
+        wfs = [i.result() for i in tqdm(wfs_out)]
+        return wfs
+    except KeyboardInterrupt:
+        print('Cancelling jobs')
+        [i.cancel() for i in tqdm(tcs)]
