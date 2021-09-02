@@ -20,8 +20,13 @@ import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn import manifold
 from tqdm import trange
-import cusignal
-import cupy as cp
+cuda_present = False
+try:
+    import cusignal
+    import cupy as cp
+    cuda_present = True
+except:
+    pass
 class Recording:
     
     def __init__(self, filepath, *, savepath=None):
@@ -147,6 +152,7 @@ class Recording:
             return distance_matrix
         
     def estim_distance_matrix(self, *, from_sample=0, to_sample=20000*60*5, dist_coef=143, dist_power=1/3):
+        assert cuda_present, "Cuda isn't implemented, cannot run function"
         if self.estimated_coordinates is None:
             filtdata = self.filtered_data(from_sample=from_sample, to_sample=to_sample)
             corrs = cp.corrcoef(filtdata)
@@ -184,6 +190,7 @@ class Recording:
         self.xs = self.xs[non_broken_chans]
         self.electrodes = self.electrodes[non_broken_chans]
         self.ys = self.ys[non_broken_chans]
+        self.saturations = self.saturations[non_broken_chans]
         print('removed %d channels showing abnormal distributions' % (len(data)-len(self.channels)))
         
 
@@ -203,6 +210,7 @@ class Recording:
             fid.write("}\n")
     
     def find_tcs(self, chunk_size=65536, overlap=1000, order=40, threshold=4, return_stds=False, whitening=False):
+        assert cuda_present, "Unable to import cuda cannot run"
         all_spikes = [[], []]
         spike_amps = []
         stds = np.std(self.filtered_data(from_sample=0, to_sample=chunk_size), axis=1)

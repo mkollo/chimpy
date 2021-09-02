@@ -10,8 +10,13 @@
 
 import multiprocessing
 from functools import partial
-import cupy
-import cusignal
+cuda_present = False
+try:
+    import cupy
+    import cusignal
+    cuda_present = True
+except:
+    print('Unable to import cuda pacakges, don\'t try and functions which need them')
 from scipy.signal import butter
 import numpy as np
 from tqdm import trange, tqdm
@@ -24,6 +29,7 @@ from chimpy.dask_tasks import dask_filter_chunk, check_progress
 import dask
 
 def cuda_median(a, axis=1):
+    assert cuda_present, "Cuda isn't implemented, cannot run function"
     a = cupy.asanyarray(a)
     sz = a.shape[axis]
     if sz % 2 == 0:
@@ -47,6 +53,7 @@ def cuda_median(a, axis=1):
     return cupy.mean(part[indexer], axis=axis)
 
 def filter_traces(s, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1):
+    assert cuda_present, "Cuda isn't implemented, cannot run function"
     if n_samples==-1:
         n_samples=s.shape[1]
     sos = butter(order, [low_cutoff/10000, high_cutoff/10000], 'bandpass', output='sos')
@@ -173,7 +180,8 @@ def filter_experiment_slurm(in_recording, stim_recording, low_cutoff, high_cutof
     slurm = Slurm("slurm_filter", 12, gpu=True)
     slurm.run(params)
 
-def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False, whiten=False):    
+def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutoff, order=3, cmr=False, sample_chunk_size=65536, n_samples=-1, ram_copy=False, whiten=False):
+    assert cuda_present, "Cuda isn't implemented, cannot run function" 
     channels=stim_recording.channels
     amps=stim_recording.amps
     scales=1000/amps
@@ -240,12 +248,14 @@ def filter_experiment_local(in_recording, stim_recording, low_cutoff, high_cutof
         del in_ramfile, out_ramfile
 
 def get_spike_crossings(s, threshold=7):
+    assert cuda_present, "Cuda isn't implemented, cannot run function"
     mean_stim_trace=cupy.asnumpy(cupy.mean(s,axis=0))
     spike_threshold=-cupy.std(mean_stim_trace)*threshold
     crossings=np.where(mean_stim_trace<spike_threshold)[0][:-2]
     return crossings[np.diff(crossings, prepend=0)>1]
     
 def get_spike_amps(s, return_counts = False):
+    assert cuda_present, "Cuda isn't implemented, cannot run function"
     sig=cupy.asarray(s[:1024,:20000])
     peaks=cusignal.peak_finding.peak_finding.argrelmin(sig, order=20, axis=1)
     mean_std=cupy.mean(cupy.std(sig,axis=1))
