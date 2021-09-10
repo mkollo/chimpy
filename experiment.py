@@ -18,7 +18,6 @@ class Experiment:
     '''
     A series of chimpy recordings associated with a single experimental day
     '''
-
     
     def __init__(self, experiment_path, *, savepath=None, stim_selection=-1, conn_selection=-1, noise_selection=-1, pid_selection=-1, smr_selection=-1, no_graphics=False, switched_recordings=[None], ignore_recordings=[None]):
         '''

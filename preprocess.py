@@ -16,7 +16,7 @@ try:
     import cusignal
     cuda_present = True
 except:
-    print('Unable to import cuda pacakges, don\'t try and functions which need them')
+    print('Unable to import cuda packages')
 from scipy.signal import butter
 import numpy as np
 from tqdm import trange, tqdm
