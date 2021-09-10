@@ -253,7 +253,7 @@ class StimRecording(Recording):
         self.remove_unconnected()
         self.amps = self.amps[self.connected_pixels]
 #        self.amps = self.amps[self.connected_in_mapping]
-        #self.clusters = self.cluster_pixels()        
+        self.clusters = self.cluster_pixels()        
         
     def cluster_pixels(self):   
         coords=np.transpose(np.vstack((self.xs,self.ys, self.amps)))
